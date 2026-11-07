@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0}</style>
+<title>Real Rate</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one column. Summary (real rate) first, period picker, chart, entry form, day log. Timesheet feel: mono figures, ruled rows. */
+:root {
+  --bg: #eef1f3;
+  --surface: #ffffff;
+  --fg: #16212a;
+  --muted: #5d6c78;
+  --line: #d5dce1;
+  --accent: #0b6e66;
+  --accent-fg: #ffffff;
+  --accent-soft: #d9efec;
+  --gain: #1a7f45;
+  --loss: #b4441c;
+  --bar: #8fc7c0;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1619; --surface: #172126; --fg: #e5ecef; --muted: #8fa1ab; --line: #2a3841;
+    --accent: #4fc1b6; --accent-fg: #06201d; --accent-soft: #17372f; --gain: #5fcf8d; --loss: #f09a72; --bar: #2d6a64;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1619; --surface: #172126; --fg: #e5ecef; --muted: #8fa1ab; --line: #2a3841;
+  --accent: #4fc1b6; --accent-fg: #06201d; --accent-soft: #17372f; --gain: #5fcf8d; --loss: #f09a72; --bar: #2d6a64;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 12px; margin: 0 0 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.status { font-size: 12px; color: var(--muted); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; min-width: 0; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+
+/* period picker */
+.picker { display: flex; flex-direction: column; gap: 12px; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button { flex: 1 1 auto; }
+button, input, select { font: inherit; color: inherit; }
+button {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 7px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 500; }
+button.quiet { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; }
+button.quiet:hover { color: var(--fg); border-color: var(--line); }
+button.danger { color: var(--loss); }
+.nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nav .label { flex: 1 1 160px; text-align: center; font-weight: 500; min-width: 0; }
+.custom { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; flex: 1 1 260px; }
+
+input, select {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 7px 9px; width: 100%; min-width: 0;
+}
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; }
+
+/* summary */
+.hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; align-items: center; }
+.big { font-size: clamp(38px, 9vw, 58px); font-weight: 600; line-height: 1.05; color: var(--accent); letter-spacing: -0.02em; }
+.big small { font-size: 0.35em; color: var(--muted); font-weight: 400; letter-spacing: 0; }
+.cap { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.delta { display: inline-block; margin-top: 8px; padding: 2px 8px; border-radius: 4px; font-size: 13px; font-family: var(--font-num); background: var(--accent-soft); }
+.delta.neg { color: var(--loss); }
+.delta.pos { color: var(--gain); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid var(--line); }
+.stat { padding: 10px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.stat:nth-child(odd) { padding-right: 12px; }
+.stat:nth-child(even) { padding-left: 12px; border-left: 1px solid var(--line); }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font-size: 18px; font-weight: 500; }
+.explain { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.explain b { color: var(--fg); font-weight: 500; }
+.empty { color: var(--muted); }
+.empty .ex { margin-top: 10px; padding: 10px 12px; background: var(--bg); border-radius: 5px; font-size: 13px; }
+
+/* chart */
+.chart { display: flex; align-items: flex-end; gap: 6px; height: 150px; position: relative; padding-top: 8px; overflow-x: auto; }
+.col { flex: 1 0 22px; max-width: 64px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; min-width: 0; }
+.col .bar { width: 100%; background: var(--bar); border-radius: 3px 3px 0 0; min-height: 2px; }
+.col.below .bar { background: var(--loss); opacity: 0.75; }
+.col .tick { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 10px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; background: var(--bar); vertical-align: -1px; }
+.legend i.l { background: var(--loss); }
+.legend i.n { background: none; border-top: 2px dashed var(--fg); height: 0; width: 14px; border-radius: 0; vertical-align: 3px; }
+.chartbox { position: relative; }
+.nomline { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--fg); opacity: 0.55; pointer-events: none; }
+
+/* form */
+.form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.form-actions { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.preview { color: var(--muted); font-size: 13px; margin-left: auto; }
+details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.defaults { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+
+/* table */
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 700px; }
+th { text-align: right; font-weight: 500; font-size: 12px; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { text-align: right; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; padding-left: 0; }
+td:last-child, th:last-child { padding-right: 0; }
+td.act { text-align: right; }
+tr.editing td { background: var(--accent-soft); }
+.pos { color: var(--gain); } .neg { color: var(--loss); }
+
+@media (max-width: 640px) {
+  .hero { grid-template-columns: 1fr; }
+  .form { grid-template-columns: 1fr 1fr; }
+  .defaults { grid-template-columns: 1fr 1fr; }
+  .preview { margin-left: 0; width: 100%; }
+}
+@media (prefers-reduced-motion: no-preference) { .col .bar { transition: height .2s; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Real Rate</h1>
+    <span class="status" id="status" role="status">Loading…</span>
+  </header>
+
+  <section class="panel picker" aria-label="Time period">
+    <div class="seg" id="modes"></div>
+    <div class="nav">
+      <button id="prev" aria-label="Previous period">&larr;</button>
+      <div class="label" id="plabel"></div>
+      <div class="custom" id="custom" hidden>
+        <input type="date" id="from" aria-label="From date" style="width:auto">
+        <span>to</span>
+        <input type="date" id="to" aria-label="To date" style="width:auto">
+      </div>
+      <button id="next" aria-label="Next period">&rarr;</button>
+      <button id="today" class="quiet">Today</button>
+    </div>
+  </section>
+
+  <section class="panel" id="summary" aria-live="polite"></section>
+
+  <section class="panel" id="chartPanel">
+    <h2 id="chartTitle">Real rate over time</h2>
+    <div id="chartBody"></div>
+  </section>
+
+  <section class="panel">
+    <h2 id="formTitle">Log a day</h2>
+    <form class="form" id="form">
+      <label for="f-date">Date<input id="f-date" type="date" required></label>
+      <label for="f-worked">Hours worked<input id="f-worked" type="number" step="0.25" min="0" max="24" inputmode="decimal" required></label>
+      <label for="f-paid">Hours paid<input id="f-paid" type="number" step="0.25" min="0" max="24" inputmode="decimal" required></label>
+      <label for="f-rate">Hourly rate<input id="f-rate" type="number" step="0.01" min="0" inputmode="decimal" required></label>
+      <div class="form-actions">
+        <button class="primary" type="submit" id="save">Save day</button>
+        <button type="button" id="cancel" hidden>Cancel edit</button>
+        <span class="preview num" id="preview"></span>
+      </div>
+    </form>
+    <details style="margin-top:14px">
+      <summary>Defaults for new days</summary>
+      <div class="defaults">
+        <label for="d-rate">Usual hourly rate<input id="d-rate" type="number" step="0.01" min="0" inputmode="decimal"></label>
+        <label for="d-paid">Usual paid hours<input id="d-paid" type="number" step="0.25" min="0" max="24" inputmode="decimal"></label>
+        <label for="d-cur">Currency
+          <select id="d-cur">
+            <option value="GBP">GBP £</option><option value="USD">USD $</option><option value="EUR">EUR €</option>
+            <option value="CAD">CAD $</option><option value="AUD">AUD $</option><option value="NZD">NZD $</option>
+          </select>
+        </label>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel">
+    <h2 id="logTitle">Days in this period</h2>
+    <div id="log"></div>
+    <details style="margin-top:14px">
+      <summary>Backup and restore</summary>
+      <p class="explain">Copy the text below somewhere safe to keep a backup. To restore or move to another browser, paste a backup here and press Restore. Days with the same date are replaced.</p>
+      <label for="b-text">Backup text<textarea id="b-text" rows="5" style="width:100%;font-family:var(--font-num);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:5px;color:inherit;padding:8px"></textarea></label>
+      <div class="form-actions" style="margin-top:8px"><button type="button" id="b-show">Show backup</button><button type="button" id="b-load">Restore from text</button></div>
+    </details>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var DEFAULTS = { rate: 25, paidHours: 12, currency: "GBP" };
+  var state = {
+    entries: {},            // date -> {date, worked, paid, rate}
+    settings: Object.assign({}, DEFAULTS),
+    mode: "week", anchor: todayStr(), from: todayStr(), to: todayStr(),
+    editing: null, loaded: false, storage: "pending", error: ""
+  };
+  var store = null;
+
+  /* ---------- dates ---------- */
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function fmt(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function parse(s) { var p = s.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function todayStr() { return fmt(new Date()); }
+  function addDays(s, n) { var d = parse(s); d.setDate(d.getDate() + n); return fmt(d); }
+  function dayDiff(a, b) { return Math.round((parse(b) - parse(a)) / 86400000); }
+  function range() {
+    var a = parse(state.anchor), s, e;
+    if (state.mode === "day") { s = e = state.anchor; }
+    else if (state.mode === "week") { var off = (a.getDay() + 6) % 7; s = addDays(state.anchor, -off); e = addDays(s, 6); }
+    else if (state.mode === "month") { s = fmt(new Date(a.getFullYear(), a.getMonth(), 1)); e = fmt(new Date(a.getFullYear(), a.getMonth() + 1, 0)); }
+    else if (state.mode === "year") { s = a.getFullYear() + "-01-01"; e = a.getFullYear() + "-12-31"; }
+    else { s = state.from <= state.to ? state.from : state.to; e = state.from <= state.to ? state.to : state.from; }
+    return [s, e];
+  }
+  function shift(dir) {
+    var a = parse(state.anchor);
+    if (state.mode === "day") state.anchor = addDays(state.anchor, dir);
+    else if (state.mode === "week") state.anchor = addDays(state.anchor, 7 * dir);
+    else if (state.mode === "month") state.anchor = fmt(new Date(a.getFullYear(), a.getMonth() + dir, 1));
+    else if (state.mode === "year") state.anchor = fmt(new Date(a.getFullYear() + dir, 0, 1));
+    else { var r = range(), len = dayDiff(r[0], r[1]) + 1; state.from = addDays(r[0], dir * len); state.to = addDays(r[1], dir * len); }
+  }
+  var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var MONL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  var DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  function nice(s, withYear) { var d = parse(s); return d.getDate() + " " + MON[d.getMonth()] + (withYear ? " " + d.getFullYear() : ""); }
+  function periodLabel() {
+    var r = range(), a = parse(r[0]);
+    if (state.mode === "day") return DOW[a.getDay()] + " " + nice(r[0], true);
+    if (state.mode === "week") return nice(r[0], parse(r[0]).getFullYear() !== parse(r[1]).getFullYear()) + " – " + nice(r[1], true);
+    if (state.mode === "month") return MONL[a.getMonth()] + " " + a.getFullYear();
+    if (state.mode === "year") return String(a.getFullYear());
+    return "";
+  }
+
+  /* ---------- money / numbers ---------- */
+  function money(n) {
+    try { return new Intl.NumberFormat("en-GB", { style: "currency", currency: state.settings.currency }).format(n); }
+    catch (e) { return "£" + n.toFixed(2); }
+  }
+  function hrs(n) { return (Math.round(n * 100) / 100).toString(); }
+  function num(v) { var n = parseFloat(v); return isFinite(n) ? n : NaN; }
+
+  /* ---------- math ---------- */
+  function sum(list) {
+    var worked = 0, paid = 0, pay = 0;
+    list.forEach(function (e) { worked += e.worked; paid += e.paid; pay += e.paid * e.rate; });
+    return {
+      n: list.length, worked: worked, paid: paid, pay: pay,
+      real: worked > 0 ? pay / worked : null,
+      nominal: paid > 0 ? pay / paid : null,
+      gap: paid - worked
+    };
+  }
+  function inRange(r) {
+    return Object.keys(state.entries).sort().filter(function (d) { return d >= r[0] && d <= r[1]; })
+      .map(function (d) { return state.entries[d]; });
+  }
+
+  /* ---------- storage ---------- */
+  function makeLocalStore() {
+    var KEY = "realrate:v1", mem = null;
+    function read() {
+      try { var raw = localStorage.getItem(KEY); if (raw) return JSON.parse(raw); } catch (e) {}
+      return mem || { entries: {}, settings: {} };
+    }
+    function write(obj) { mem = obj; try { localStorage.setItem(KEY, JSON.stringify(obj)); } catch (e) {} }
+    return {
+      kind: "local",
+      start: function (cb) { var o = read(); cb(o.entries || {}, o.settings || {}); },
+      saveEntry: function (e) { var o = read(); o.entries = o.entries || {}; o.entries[e.date] = e; write(o); return Promise.resolve(); },
+      deleteEntry: function (d) { var o = read(); if (o.entries) delete o.entries[d]; write(o); return Promise.resolve(); },
+      saveSettings: function (s) { var o = read(); o.settings = s; write(o); return Promise.resolve(); },
+      local: true
+    };
+  }
+  function makeDbStore(db, uid) {
+    var col = db.collection("data/users/" + uid);
+    return {
+      kind: "db",
+      start: function (cb, onErr) {
+        var timer = setTimeout(function () { state.error = "Can't reach your saved data yet."; render(); }, 10000);
+        col.onSnapshot(function (snap) {
+          if (!snap.metadata.fromCache) { clearTimeout(timer); if (state.error) { state.error = ""; } }
+          var entries = {}, settings = {};
+          snap.docs.forEach(function (d) {
+            var data = d.data(); if (!data) return;
+            if (d.id === "settings") settings = data; else entries[d.id] = data;
+          });
+          cb(entries, settings);
+        }, function () { clearTimeout(timer); state.error = "Saved data is unavailable right now."; render(); });
+      },
+      saveEntry: function (e) { return col.doc(e.date).set(e); },
+      deleteEntry: function (d) { return col.doc(d).delete(); },
+      saveSettings: function (s) { return col.doc("settings").set(s); }
+    };
+  }
+  function applyData(entries, settings) {
+    var clean = {};
+    Object.keys(entries).forEach(function (k) {
+      var e = entries[k];
+      if (e && typeof e.worked === "number" && typeof e.paid === "number" && typeof e.rate === "number") clean[k] = { date: k, worked: e.worked, paid: e.paid, rate: e.rate };
+    });
+    state.entries = clean;
+    state.settings = Object.assign({}, DEFAULTS, settings);
+    state.loaded = true;
+    if (!state.editing) fillFormDefaults();
+    render();
+  }
+  function persist(p) {
+    return p.then(function () { state.error = ""; render(); }, function () { state.error = "That change did not save. Try again."; render(); });
+  }
+
+  /* ---------- DOM ---------- */
+  function $(id) { return document.getElementById(id); }
+  var MODES = [["day","Day"],["week","Week"],["month","Month"],["year","Year"],["custom","Custom"]];
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+
+  function renderPicker() {
+    $("modes").innerHTML = MODES.map(function (m) {
+      return '<button type="button" data-mode="' + m[0] + '" class="' + (state.mode === m[0] ? "on" : "") + '" aria-pressed="' + (state.mode === m[0]) + '">' + m[1] + "</button>";
+    }).join("");
+    var custom = state.mode === "custom";
+    $("custom").hidden = !custom;
+    $("plabel").hidden = custom;
+    $("plabel").textContent = periodLabel();
+    if (custom) { $("from").value = state.from; $("to").value = state.to; }
+  }
+
+  function renderSummary() {
+    var r = range(), list = inRange(r), t = sum(list), el = $("summary");
+    if (!list.length) {
+      el.innerHTML = '<div class="empty"><h2>Real hourly rate</h2>' +
+        (Object.keys(state.entries).length ? "No days logged in this period." : "Log a day below to see what you really earn per hour worked.") +
+        '<div class="ex">Example: paid for 12 hours at ' + money(25) + ' = ' + money(300) + '. You only worked 10, so your real rate is <b class="num">' + money(30) + '/h</b>.</div></div>';
+      return;
+    }
+    var real = t.real, diff = real == null ? 0 : real - t.nominal;
+    var deltaCls = diff > 0.005 ? "pos" : diff < -0.005 ? "neg" : "";
+    var deltaTxt = real == null ? "" :
+      (diff > 0.005 ? "+" + money(diff) + "/h above your paid rate of " + money(t.nominal) :
+       diff < -0.005 ? "−" + money(-diff) + "/h below your paid rate of " + money(t.nominal) :
+       "Same as your paid rate");
+    var gapLabel = t.gap >= 0 ? "Paid but not worked" : "Worked but not paid";
+    var explain = "";
+    if (real != null && Math.abs(t.gap) > 0.001) {
+      explain = t.gap > 0
+        ? "You were paid for <b>" + hrs(t.gap) + " h</b> you did not work. Spread across the <b>" + hrs(t.worked) + " h</b> you did work, that lifts every hour."
+        : "You worked <b>" + hrs(-t.gap) + " h</b> more than you were paid for. Spread across all <b>" + hrs(t.worked) + " h</b>, that lowers every hour.";
+    }
+    el.innerHTML =
+      '<div class="hero"><div>' +
+        '<h2>Real hourly rate</h2>' +
+        '<div class="big num">' + (real == null ? "—" : money(real)) + '<small> /h</small></div>' +
+        (real == null ? '<div class="cap">No hours worked in this period.</div>' : '<span class="delta ' + deltaCls + '">' + deltaTxt + '</span>') +
+      '</div>' +
+      '<div class="stats">' +
+        stat("Total pay", money(t.pay)) + stat("Days logged", t.n) +
+        stat("Hours worked", hrs(t.worked)) + stat("Hours paid", hrs(t.paid)) +
+        '<div class="stat" style="grid-column:1/-1;padding-left:0;border-left:0"><div class="k">' + gapLabel + '</div><div class="v num ' + (t.gap > 0 ? "pos" : t.gap < 0 ? "neg" : "") + '">' + hrs(Math.abs(t.gap)) + ' h</div></div>' +
+      '</div></div>' + (explain ? '<div class="explain">' + explain + '</div>' : "");
+  }
+  function stat(k, v) { return '<div class="stat"><div class="k">' + k + '</div><div class="v num">' + v + '</div></div>'; }
+
+  function renderChart() {
+    var r = range(), list = inRange(r), body = $("chartBody"), groups = [], monthly = dayDiff(r[0], r[1]) > 62;
+    $("chartTitle").textContent = monthly ? "Real rate by month" : "Real rate by day";
+    if (!list.length) { body.innerHTML = '<div class="empty">The chart appears once you have logged days.</div>'; return; }
+    var map = {}, order = [];
+    list.forEach(function (e) {
+      var key = monthly ? e.date.slice(0, 7) : e.date;
+      if (!map[key]) { map[key] = []; order.push(key); }
+      map[key].push(e);
+    });
+    order.forEach(function (k) {
+      var t = sum(map[k]), d = parse(monthly ? k + "-01" : k);
+      groups.push({ key: k, t: t, tick: monthly ? MON[d.getMonth()] : (list.length > 14 ? String(d.getDate()) : DOW[d.getDay()] + " " + d.getDate()) });
+    });
+    var max = 0;
+    groups.forEach(function (g) { if (g.t.real != null) max = Math.max(max, g.t.real, g.t.nominal); });
+    if (max <= 0) { body.innerHTML = '<div class="empty">No hours worked yet, so there is no rate to chart.</div>'; return; }
+    var H = 118, total = sum(list), nomY = total.nominal != null ? Math.round(total.nominal / max * H) : null;
+    var cols = groups.map(function (g) {
+      var h = g.t.real == null ? 0 : Math.max(2, Math.round(g.t.real / max * H));
+      var below = g.t.real != null && g.t.real < g.t.nominal - 0.005;
+      var tip = g.t.real == null ? "No hours worked" : money(g.t.real) + "/h real, " + money(g.t.nominal) + "/h paid";
+      return '<div class="col' + (below ? " below" : "") + '" title="' + esc(tip) + '"><div class="bar" style="height:' + h + 'px"></div><div class="tick">' + g.tick + '</div></div>';
+    }).join("");
+    body.innerHTML = '<div class="chartbox"><div class="chart">' + cols + '</div>' +
+      (nomY != null ? '<div class="nomline" style="bottom:' + (nomY + 22) + 'px"></div>' : "") + '</div>' +
+      '<div class="legend"><span><i></i>Real rate</span><span><i class="l"></i>Below paid rate</span><span><i class="n"></i>Paid rate (' + money(total.nominal || 0) + ')</span><span class="num">Top of chart ' + money(max) + '</span></div>';
+  }
+
+  function renderLog() {
+    var r = range(), list = inRange(r), el = $("log");
+    $("logTitle").textContent = "Days in this period";
+    if (!list.length) { el.innerHTML = '<div class="empty">Nothing logged for ' + (state.mode === "custom" ? "these dates" : "this period") + ".</div>"; return; }
+    var rows = list.slice().reverse().map(function (e) {
+      var pay = e.paid * e.rate, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
+      return '<tr class="' + (state.editing === e.date ? "editing" : "") + '"><td>' + DOW[d.getDay()] + " " + nice(e.date, true) + "</td>" +
+        '<td class="num">' + hrs(e.worked) + '</td><td class="num">' + hrs(e.paid) + '</td><td class="num">' + money(e.rate) + '</td>' +
+        '<td class="num">' + money(pay) + '</td><td class="num"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
+        '<td class="act"><button class="quiet" data-copy="' + e.date + '|-1" title="Copy this day to the day before" aria-label="Copy to the day before">&larr; Copy</button><button class="quiet" data-copy="' + e.date + '|1" title="Copy this day to the day after" aria-label="Copy to the day after">Copy &rarr;</button><button class="quiet" data-edit="' + e.date + '">Edit</button><button class="quiet danger" data-del="' + e.date + '">' + (state.confirmDel === e.date ? "Sure?" : "Delete") + '</button></td></tr>';
+    }).join("");
+    el.innerHTML = '<div class="scroll"><table><thead><tr><th>Date</th><th>Worked</th><th>Paid</th><th>Rate</th><th>Pay</th><th>Real rate</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function renderStatus() {
+    var s = $("status");
+    if (state.error) s.textContent = state.error;
+    else if (state.note) s.textContent = state.note;
+    else if (!state.loaded) s.textContent = "Loading…";
+    else s.textContent = state.storage === "local" ? "Saved in this browser only" : "Saved to your account";
+  }
+  function render() { renderPicker(); renderSummary(); renderChart(); renderLog(); renderStatus(); renderPreview(); }
+
+  /* ---------- form ---------- */
+  function fillFormDefaults() {
+    $("f-date").value = state.mode === "day" ? state.anchor : todayStr();
+    $("f-worked").value = "";
+    $("f-paid").value = state.settings.paidHours;
+    $("f-rate").value = state.settings.rate;
+    $("d-rate").value = state.settings.rate;
+    $("d-paid").value = state.settings.paidHours;
+    $("d-cur").value = state.settings.currency;
+    $("formTitle").textContent = "Log a day";
+    $("save").textContent = "Save day";
+    $("cancel").hidden = true;
+  }
+  function renderPreview() {
+    var w = num($("f-worked").value), p = num($("f-paid").value), r = num($("f-rate").value);
+    $("preview").textContent = (w > 0 && p >= 0 && r >= 0) ? "This day: " + money(p * r) + " earned, " + money(p * r / w) + "/h real" : "";
+  }
+  function startEdit(date) {
+    var e = state.entries[date]; if (!e) return;
+    state.editing = date;
+    $("f-date").value = e.date; $("f-worked").value = e.worked; $("f-paid").value = e.paid; $("f-rate").value = e.rate;
+    $("formTitle").textContent = "Edit day";
+    $("save").textContent = "Update day";
+    $("cancel").hidden = false;
+    renderPreview(); renderLog();
+    $("form").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  var noteTimer;
+  function flash(msg) { state.note = msg; renderStatus(); clearTimeout(noteTimer); noteTimer = setTimeout(function () { state.note = ""; renderStatus(); }, 4000); }
+  function copyDay(arg) {
+    var p = arg.split("|"), src = state.entries[p[0]]; if (!src) return;
+    var target = addDays(p[0], +p[1]), td = parse(target), label = DOW[td.getDay()] + " " + nice(target, true);
+    if (state.entries[target]) { flash(label + " already has an entry. Edit or delete it first."); return; }
+    var e = { date: target, worked: src.worked, paid: src.paid, rate: src.rate };
+    state.entries[target] = e; render(); flash("Copied to " + label);
+    persist(store.saveEntry(e));
+  }
+  function stopEdit() { state.editing = null; fillFormDefaults(); renderPreview(); renderLog(); }
+
+  function init() {
+    $("modes").addEventListener("click", function (ev) {
+      var m = ev.target.getAttribute && ev.target.getAttribute("data-mode"); if (!m) return;
+      if (m === "custom" && state.mode !== "custom") { var r = range(); state.from = r[0]; state.to = r[1]; }
+      state.mode = m; render();
+    });
+    $("prev").onclick = function () { shift(-1); render(); };
+    $("next").onclick = function () { shift(1); render(); };
+    $("today").onclick = function () { state.anchor = todayStr(); if (state.mode === "custom") { state.from = state.to = todayStr(); } render(); };
+    $("from").onchange = function () { if ($("from").value) { state.from = $("from").value; render(); } };
+    $("to").onchange = function () { if ($("to").value) { state.to = $("to").value; render(); } };
+    ["f-worked", "f-paid", "f-rate"].forEach(function (id) { $(id).addEventListener("input", renderPreview); });
+
+    $("form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var date = $("f-date").value, w = num($("f-worked").value), p = num($("f-paid").value), r = num($("f-rate").value);
+      if (!date || !(w >= 0) || !(p >= 0) || !(r >= 0)) return;
+      var wasEditing = state.editing, e = { date: date, worked: w, paid: p, rate: r };
+      state.entries[date] = e;
+      var jobs = [store.saveEntry(e)];
+      if (wasEditing && wasEditing !== date) { delete state.entries[wasEditing]; jobs.push(store.deleteEntry(wasEditing)); }
+      state.editing = null;
+      state.anchor = date;
+      if (state.mode === "custom") { if (date < state.from) state.from = date; if (date > state.to) state.to = date; }
+      fillFormDefaults();
+      render();
+      persist(Promise.all(jobs));
+    });
+    $("cancel").onclick = stopEdit;
+    $("log").addEventListener("click", function (ev) {
+      var t = ev.target, ed = t.getAttribute && t.getAttribute("data-edit"), del = t.getAttribute && t.getAttribute("data-del"), cp = t.getAttribute && t.getAttribute("data-copy");
+      if (cp) { state.confirmDel = null; copyDay(cp); }
+      else if (ed) { state.confirmDel = null; startEdit(ed); }
+      else if (del) {
+        if (state.confirmDel === del) {
+          state.confirmDel = null; delete state.entries[del];
+          if (state.editing === del) { state.editing = null; fillFormDefaults(); }
+          render(); persist(store.deleteEntry(del));
+        } else { state.confirmDel = del; renderLog(); }
+      }
+    });
+    function saveDefaults() {
+      var r = num($("d-rate").value), p = num($("d-paid").value);
+      state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value };
+      render(); persist(store.saveSettings(state.settings));
+    }
+    ["d-rate", "d-paid", "d-cur"].forEach(function (id) { $(id).addEventListener("change", saveDefaults); });
+    $("b-show").onclick = function () {
+      $("b-text").value = JSON.stringify({ entries: state.entries, settings: state.settings }, null, 1);
+      $("b-text").select();
+    };
+    $("b-load").onclick = async function () {
+      var o; try { o = JSON.parse($("b-text").value); } catch (x) { flash("That text is not a valid backup."); return; }
+      var ents = (o && o.entries) || {}, n = 0;
+      for (var k in ents) {
+        var e = ents[k];
+        if (/^\d{4}-\d\d-\d\d$/.test(k) && e && typeof e.worked === "number" && typeof e.paid === "number" && typeof e.rate === "number") {
+          var c = { date: k, worked: e.worked, paid: e.paid, rate: e.rate };
+          state.entries[k] = c; n++;
+          try { await store.saveEntry(c); } catch (x) {}
+        }
+      }
+      render(); flash("Restored " + n + " day" + (n === 1 ? "" : "s") + ".");
+    };
+    fillFormDefaults();
+    render();
+  }
+
+  /* ---------- boot ---------- */
+  function startStore(s) { store = s; state.storage = s.local ? "local" : "db"; s.start(applyData); }
+  init();
+  // Use local storage until the account store answers, so the page works at once.
+  startStore(makeLocalStore());
+  (async function () {
+    try {
+      var c = window.claude; if (!c || !c.use) return;
+      var db = await c.use("db"), user = await c.use("user");
+      var uid = user && await user.id();
+      if (!db || !uid) return;
+      // carry over anything saved locally before the account store connected
+      var local = store;
+      var pending = null;
+      local.start(function (e, s) { pending = { e: e, s: s }; });
+      startStore(makeDbStore(db, uid));
+      if (pending && Object.keys(pending.e).length) {
+        var col = db.collection("data/users/" + uid);
+        var existing = await col.get();
+        if (existing.empty) {
+          for (var k in pending.e) { await col.doc(k).set(pending.e[k]); }
+          if (pending.s && Object.keys(pending.s).length) await col.doc("settings").set(pending.s);
+        }
+      }
+    } catch (e) { /* stay on local storage */ }
+  })();
+})();
+</script>
+</body>
+</html>
