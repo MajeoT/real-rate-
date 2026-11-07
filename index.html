@@ -126,7 +126,10 @@ tr.editing td { background: var(--accent-soft); }
 
 .tax { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
 .tax h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-.tax table { min-width: 0; font-size: 14px; }
+.tax table { min-width: 640px; font-size: 14px; }
+.tax th.grp { text-align: center; }
+.tax .sep { border-left: 1px solid var(--line); }
+.tax .realc { color: var(--accent); font-weight: 500; }
 .tax td:first-child, .tax th:first-child { padding-left: 0; }
 .tax tr.total td { font-weight: 600; border-bottom: 0; }
 .tax .fine { margin-top: 10px; font-size: 12px; color: var(--muted); }
@@ -420,21 +423,26 @@ tr.editing td { background: var(--accent-soft); }
     if (s.currency !== "GBP") return '<div class="tax"><div class="fine">Take-home estimates are for UK pay, so they are hidden while the currency is not GBP.</div></div>';
     if (!(t.paid > 0) || t.real == null) return "";
     var selfEmp = s.payType === "self";
-    // Weekly pay = hours paid per week x average paid rate (multipliers included). Month = year / 12.
+    // A typical week (Monday to Sunday): hours paid per week x average paid rate. Pay is the same however you slice it;
+    // only the hourly figures differ, by dividing by hours paid or by hours actually worked.
     var weekly = s.weekHours * t.nominal, annual = weekly * s.weeks;
-    var hoursYear = s.weekHours * s.weeks * (t.worked / t.paid);
+    var paidYear = s.weekHours * s.weeks, workedYear = paidYear * (t.worked / t.paid), workedWeek = s.weekHours * (t.worked / t.paid);
     var r = ukTax(annual, selfEmp), net = annual - r.tax - r.ni, f = annual > 0 ? t.pay / annual : 0;
     function row(label, v, cls) {
-      // v = yearly amount; hourly = per hour actually worked
-      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="num">' + money(v / hoursYear) + '</td><td class="num">' + money(v * f) + '</td><td class="num">' + money(v / s.weeks) + '</td><td class="num">' + money(v / 12) + '</td></tr>';
+      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td>' +
+        '<td class="num">' + money(v / paidYear) + '</td><td class="num realc">' + money(v / workedYear) + '</td>' +
+        '<td class="num sep">' + money(v * f) + '</td><td class="num">' + money(v / s.weeks) + '</td><td class="num">' + money(v / 12) + '</td><td class="num">' + money(v) + '</td></tr>';
     }
-    return '<div class="tax"><h3>Estimated take-home at your real rate</h3><div class="scroll"><table><thead><tr><th></th><th>Per hour worked</th><th>This period</th><th>Per week</th><th>Per month</th></tr></thead><tbody>' +
+    return '<div class="tax"><h3>Estimated take-home</h3><div class="scroll"><table><thead>' +
+      '<tr><th></th><th class="grp" colspan="2">Per hour</th><th class="grp sep" colspan="4">Total pay</th></tr>' +
+      '<tr><th></th><th>Paid hour</th><th>Real hour</th><th class="sep">This period</th><th>Week (Mon\u2013Sun)</th><th>Month</th><th>Year</th></tr></thead><tbody>' +
       row("Pay before tax", annual) +
       row("Income tax", -r.tax) +
       row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -r.ni) +
       row(selfEmp ? "Left after tax and NI" : "Take-home", net, "total") +
       '</tbody></table></div>' +
-      '<div class="fine">Based on ' + hrs(s.weekHours) + ' hours paid a week at your average paid rate of ' + money(t.nominal) + '/h, which is ' + money(weekly) + ' a week, ' + s.weeks + ' weeks a year. Month = year \u00f7 12, so ' + money(annual / 12) + ' before tax. Per hour worked uses your real rate of ' + money(t.real) + '/h. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change hours and weeks under Defaults for new days.</div></div>';
+      '<div class="explain">In a typical week you are paid for <b>' + hrs(s.weekHours) + ' h</b> and work <b>' + hrs(workedWeek) + ' h</b>. The pay is the same either way. <b>Paid hour</b> divides it by the hours you are paid for. <b>Real hour</b> divides it by the hours you actually work.</div>' +
+      '<div class="fine">Week = ' + hrs(s.weekHours) + ' h paid \u00d7 your average paid rate of ' + money(t.nominal) + '/h = ' + money(weekly) + '. Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + '. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change hours and weeks under Defaults for new days.</div></div>';
   }
   function stat(k, v) { return '<div class="stat"><div class="k">' + k + '</div><div class="v num">' + v + '</div></div>'; }
 
