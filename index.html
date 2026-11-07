@@ -145,6 +145,8 @@ tr.editing td { background: var(--accent-soft); }
 .plan table { min-width: 560px; }
 .plan .fine { margin-top: 10px; font-size: 12px; color: var(--muted); }
 .plan .explain { margin-top: 12px; }
+.plan .note { background: var(--accent-soft); border-radius: 5px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; }
+.plan .note button { margin-top: 8px; }
 .plan tr.sub td { color: var(--muted); }
 .stepper { display: inline-flex; align-items: center; gap: 4px; }
 .stepper .arrows { display: inline-flex; flex-direction: column; }
@@ -248,13 +250,13 @@ tr.editing td { background: var(--accent-soft); }
       <fieldset>
         <legend>Usual week</legend>
         <label for="p-paid">Hours paid per week<input id="p-paid" type="number" step="0.25" min="0" max="168" inputmode="decimal"></label>
-        <label for="p-worked">Hours worked per week<input id="p-worked" type="number" step="0.25" min="0" max="168" inputmode="decimal"></label>
+        <label for="p-worked">Hours actually worked per week<input id="p-worked" type="number" step="0.25" min="0" max="168" inputmode="decimal"></label>
         <label for="p-rate" class="wide">Hourly rate<input id="p-rate" type="number" step="0.01" min="0" inputmode="decimal"></label>
       </fieldset>
       <fieldset>
         <legend>Overtime</legend>
         <label for="p-otpaid">Hours paid per overtime shift<input id="p-otpaid" type="number" step="0.25" min="0" max="24" inputmode="decimal"></label>
-        <label for="p-otworked">Hours worked per overtime shift<input id="p-otworked" type="number" step="0.25" min="0" max="24" inputmode="decimal"></label>
+        <label for="p-otworked">Hours actually worked per overtime shift<input id="p-otworked" type="number" step="0.25" min="0" max="24" inputmode="decimal"></label>
         <label for="p-otmult">Pay multiplier<input id="p-otmult" type="number" step="0.05" min="0.1" max="10" inputmode="decimal"></label>
         <label for="p-ottimes">Overtime shifts per month<input id="p-ottimes" type="number" step="1" min="0" max="31" inputmode="numeric"></label>
       </fieldset>
@@ -499,7 +501,12 @@ tr.editing td { background: var(--accent-soft); }
       row("Overtime (" + hrs(p.otPaid) + " h \u00d7 " + hrs(p.otMult) + "\u00d7 \u00d7 " + p.otTimes + ")", otPay, false, "sub") +
       row("Pay before tax", gross, true, "");
     if (gbp) rows += row("Income tax", -r.tax / 12, true) + row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -r.ni / 12, true) + row(selfEmp ? "Left after tax and NI" : "Take-home", net, true, "total");
-    $("plannerOut").innerHTML = '<div class="scroll"><table><thead><tr><th></th><th>Paid hour</th><th>Real hour</th><th class="sep">Month</th><th>Year</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    var same = Math.abs(paidH - workedH) < 0.005;
+    var all = sum(Object.keys(state.entries).map(function (k) { return state.entries[k]; }));
+    var canRatio = all.paid > 0 && all.worked > 0 && Math.abs(all.paid - all.worked) > 0.005;
+    var note = same ? '<div class="note"><b>Hours worked is the same as hours paid, so the real hour matches the paid hour.</b> Enter fewer hours actually worked (for example 40 instead of 48) and the real hour will rise.' +
+      (canRatio ? '<br><button type="button" data-act="ratio">Fill hours worked from my logged days</button>' : '') + '</div>' : '';
+    $("plannerOut").innerHTML = note + '<div class="scroll"><table><thead><tr><th></th><th>Paid hour</th><th>Real hour</th><th class="sep">Month</th><th>Year</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<div class="explain">In a typical month you are paid for <b>' + hrs(paidH) + ' h</b> and work <b>' + hrs(workedH) + ' h</b>. Pay before tax is <b>' + money(gross) + '</b>, which is <b>' + (workedH > 0 ? money(gross / workedH) : "\u2014") + '</b> for each hour worked.</div>' +
       '<div class="fine">A month is 52 \u00f7 12 weeks. Tax assumes every month is like this one' + (gbp ? ', using 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no pension or student loan' : '. Tax is only estimated for GBP') + '. Saved with your settings and not affected by the days you log.</div>';
   }
@@ -672,6 +679,14 @@ tr.editing td { background: var(--accent-soft); }
     });
     $("f-mult").addEventListener("change", function () { var c = $("f-mult").value === "custom"; $("f-mult-x").hidden = !c; if (c) $("f-mult-x").focus(); renderPreview(); });
     Object.keys(PIDS).forEach(function (k) { $(PIDS[k]).addEventListener("input", plannerInput); });
+    $("plannerOut").addEventListener("click", function (ev) {
+      if (!ev.target.getAttribute || ev.target.getAttribute("data-act") !== "ratio") return;
+      var a = sum(Object.keys(state.entries).map(function (k) { return state.entries[k]; }));
+      if (!(a.paid > 0)) return;
+      var ratio = a.worked / a.paid, p = planner();
+      state.settings.planner = Object.assign({}, p, { workedWeek: Math.round(p.paidWeek * ratio * 100) / 100, otWorked: Math.round(p.otPaid * ratio * 100) / 100 });
+      fillPlanner(); renderPlanner(); persist(store.saveSettings(state.settings));
+    });
     $("cancel").onclick = stopEdit;
     $("whatifBtn").onclick = function () {
       var opening = $("whatif").hidden;
