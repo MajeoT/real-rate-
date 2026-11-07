@@ -492,13 +492,14 @@ tr.editing td { background: var(--accent-soft); }
     var paidH = p.paidWeek * WPM + p.otPaid * p.otTimes, workedH = p.workedWeek * WPM + p.otWorked * p.otTimes;
     var r = gbp ? ukTax(gross * 12, selfEmp) : { tax: 0, ni: 0 }, net = gross - r.tax / 12 - r.ni / 12;
     function cell(v, h) { return h > 0 ? money(v / h) : "\u2014"; }
-    function row(label, m, hourly, cls) {
+    function hc(v) { return v == null ? "\u2014" : money(v); }
+    function row(label, m, hourly, cls, ph, rh) {
       return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td>' +
-        '<td class="num">' + (hourly ? cell(m, paidH) : "") + '</td><td class="num realc">' + (hourly ? cell(m, workedH) : "") + '</td>' +
+        '<td class="num">' + (ph !== undefined ? hc(ph) : hourly ? cell(m, paidH) : "") + '</td><td class="num realc">' + (ph !== undefined ? hc(rh) : hourly ? cell(m, workedH) : "") + '</td>' +
         '<td class="num sep">' + money(m) + '</td><td class="num">' + money(m * 12) + '</td></tr>';
     }
-    var rows = row("Usual weeks (" + hrs(p.paidWeek) + " h \u00d7 " + money(p.rate) + " \u00d7 52 \u00f7 12)", stdPay, false, "sub") +
-      row("Overtime (" + hrs(p.otPaid) + " h \u00d7 " + hrs(p.otMult) + "\u00d7 \u00d7 " + p.otTimes + ")", otPay, false, "sub") +
+    var rows = row("Usual weeks (" + hrs(p.paidWeek) + " h \u00d7 " + money(p.rate) + " \u00d7 52 \u00f7 12)", stdPay, false, "sub", p.rate, p.workedWeek > 0 ? p.rate * p.paidWeek / p.workedWeek : null) +
+      row("Overtime (" + hrs(p.otPaid) + " h \u00d7 " + hrs(p.otMult) + "\u00d7 \u00d7 " + p.otTimes + ")", otPay, false, "sub", p.rate * p.otMult, p.otWorked > 0 ? p.rate * p.otMult * p.otPaid / p.otWorked : null) +
       row("Pay before tax", gross, true, "");
     if (gbp) rows += row("Income tax", -r.tax / 12, true) + row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -r.ni / 12, true) + row(selfEmp ? "Left after tax and NI" : "Take-home", net, true, "total");
     var same = Math.abs(paidH - workedH) < 0.005;
@@ -507,7 +508,7 @@ tr.editing td { background: var(--accent-soft); }
     var note = same ? '<div class="note"><b>Hours worked is the same as hours paid, so the real hour matches the paid hour.</b> Enter fewer hours actually worked (for example 40 instead of 48) and the real hour will rise.' +
       (canRatio ? '<br><button type="button" data-act="ratio">Fill hours worked from my logged days</button>' : '') + '</div>' : '';
     $("plannerOut").innerHTML = note + '<div class="scroll"><table><thead><tr><th></th><th>Paid hour</th><th>Real hour</th><th class="sep">Month</th><th>Year</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<div class="explain">In a typical month you are paid for <b>' + hrs(paidH) + ' h</b> and work <b>' + hrs(workedH) + ' h</b>. Pay before tax is <b>' + money(gross) + '</b>, which is <b>' + (workedH > 0 ? money(gross / workedH) : "\u2014") + '</b> for each hour worked.</div>' +
+      '<div class="explain">Overtime pays <b>' + money(p.rate * p.otMult) + '/h</b> (' + money(p.rate) + ' \u00d7 ' + hrs(p.otMult) + '). In a typical month you are paid for <b>' + hrs(paidH) + ' h</b> and work <b>' + hrs(workedH) + ' h</b>. Pay before tax is <b>' + money(gross) + '</b>, which is <b>' + (workedH > 0 ? money(gross / workedH) : "\u2014") + '</b> for each hour worked.</div>' +
       '<div class="fine">A month is 52 \u00f7 12 weeks. Tax assumes every month is like this one' + (gbp ? ', using 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no pension or student loan' : '. Tax is only estimated for GBP') + '. Saved with your settings and not affected by the days you log.</div>';
   }
   var plannerTimer;
@@ -563,7 +564,7 @@ tr.editing td { background: var(--accent-soft); }
     var rows = list.slice().reverse().map(function (e) {
       var m = e.mult || 1, pay = e.paid * e.rate * m, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
       return '<tr class="' + (state.editing === e.date ? "editing" : "") + '"><td>' + DOW[d.getDay()] + " " + nice(e.date, true) + "</td>" +
-        '<td>' + stepper(e, "worked") + '</td><td>' + stepper(e, "paid") + '</td><td class="num">' + money(e.rate) + (m !== 1 ? ' <small style="color:var(--muted)">&times;' + m + '</small>' : '') + '</td>' +
+        '<td>' + stepper(e, "worked") + '</td><td>' + stepper(e, "paid") + '</td><td class="num">' + money(e.rate) + (m !== 1 ? ' <small style="color:var(--muted)">&times;' + m + ' = ' + money(e.rate * m) + '/h</small>' : '') + '</td>' +
         '<td class="num">' + money(pay) + '</td><td class="num"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
         '<td class="act"><button class="quiet" data-copy="' + e.date + '|-1" title="Copy this day to the day before" aria-label="Copy to the day before">&larr; Copy</button><button class="quiet" data-copy="' + e.date + '|1" title="Copy this day to the day after" aria-label="Copy to the day after">Copy &rarr;</button><button class="quiet" data-edit="' + e.date + '">Edit</button><button class="quiet danger" data-del="' + e.date + '">' + (state.confirmDel === e.date ? "Sure?" : "Delete") + '</button></td></tr>';
     }).join("");
@@ -599,7 +600,7 @@ tr.editing td { background: var(--accent-soft); }
   }
   function renderPreview() {
     var w = num($("f-worked").value), p = num($("f-paid").value), r = num($("f-rate").value), m = getMult();
-    $("preview").textContent = (w > 0 && p >= 0 && r >= 0) ? "This day: " + money(p * r * m) + " earned, " + money(p * r * m / w) + "/h real" : "";
+    $("preview").textContent = (w > 0 && p >= 0 && r >= 0) ? "This day: " + (m !== 1 ? "overtime rate " + money(r * m) + "/h, " : "") + money(p * r * m) + " earned, " + money(p * r * m / w) + "/h real" : "";
   }
   function startEdit(date) {
     var e = state.entries[date]; if (!e) return;
