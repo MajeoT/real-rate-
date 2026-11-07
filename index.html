@@ -107,7 +107,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
 .nomline { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--fg); opacity: 0.55; pointer-events: none; }
 
 /* form */
-.form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.form { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: end; }
 .form-actions { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .preview { color: var(--muted); font-size: 13px; margin-left: auto; }
 details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
@@ -130,6 +130,11 @@ tr.editing td { background: var(--accent-soft); }
 .tax td:first-child, .tax th:first-child { padding-left: 0; }
 .tax tr.total td { font-weight: 600; border-bottom: 0; }
 .tax .fine { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.loghead { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.loghead h2 { margin: 0; }
+.whatif { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; padding: 12px; background: var(--accent-soft); border-radius: 5px; margin-bottom: 12px; }
+.whatif label { flex: 0 1 180px; }
+.whatif .fine { flex: 1 1 220px; font-size: 12px; color: var(--muted); }
 .stepper { display: inline-flex; align-items: center; gap: 4px; }
 .stepper .arrows { display: inline-flex; flex-direction: column; }
 .stepper .arrows button { padding: 0 5px; font-size: 9px; line-height: 13px; border-radius: 3px; color: var(--muted); }
@@ -180,6 +185,7 @@ tr.editing td { background: var(--accent-soft); }
       <label for="f-worked">Hours worked<input id="f-worked" type="number" step="0.25" min="0" max="24" inputmode="decimal" required></label>
       <label for="f-paid">Hours paid<input id="f-paid" type="number" step="0.25" min="0" max="24" inputmode="decimal" required></label>
       <label for="f-rate">Hourly rate<input id="f-rate" type="number" step="0.01" min="0" inputmode="decimal" required></label>
+      <label for="f-mult">Pay multiplier<select id="f-mult"></select></label>
       <div class="form-actions">
         <button class="primary" type="submit" id="save">Save day</button>
         <button type="button" id="cancel" hidden>Cancel edit</button>
@@ -202,12 +208,18 @@ tr.editing td { background: var(--accent-soft); }
         <label for="d-type">Pay type
           <select id="d-type"><option value="employed">Employed (PAYE)</option><option value="self">Self-employed</option></select>
         </label>
+        <label for="d-ot">Overtime multiplier<input id="d-ot" type="number" step="0.05" min="1" max="5" inputmode="decimal"></label>
       </div>
     </details>
   </section>
 
   <section class="panel">
-    <h2 id="logTitle">Days in this period</h2>
+    <div class="loghead"><h2 id="logTitle">Days in this period</h2><button type="button" id="whatifBtn">What if I was paid a different rate?</button></div>
+    <div class="whatif" id="whatif" hidden>
+      <label for="wi-rate">Hourly rate to try<input id="wi-rate" type="number" step="0.01" min="0" inputmode="decimal"></label>
+      <button type="button" id="wi-reset">Back to logged rates</button>
+      <span class="fine">Everything on this page for the chosen period is recalculated at this rate. Overtime days keep their multiplier. Nothing is saved.</span>
+    </div>
     <div id="log"></div>
     <details style="margin-top:14px">
       <summary>Backup and restore</summary>
@@ -221,12 +233,12 @@ tr.editing td { background: var(--accent-soft); }
 <script>
 (function () {
   "use strict";
-  var DEFAULTS = { rate: 25, paidHours: 12, currency: "GBP", days: 5, weeks: 52, payType: "employed" };
+  var DEFAULTS = { rate: 25, paidHours: 12, currency: "GBP", days: 5, weeks: 52, payType: "employed", overtime: 1.5 };
   var state = {
     entries: {},            // date -> {date, worked, paid, rate}
     settings: Object.assign({}, DEFAULTS),
     mode: "week", anchor: todayStr(), from: todayStr(), to: todayStr(),
-    editing: null, loaded: false, storage: "pending", error: ""
+    editing: null, whatIf: null, loaded: false, storage: "pending", error: ""
   };
   var store = null;
 
@@ -278,7 +290,7 @@ tr.editing td { background: var(--accent-soft); }
   /* ---------- math ---------- */
   function sum(list) {
     var worked = 0, paid = 0, pay = 0;
-    list.forEach(function (e) { worked += e.worked; paid += e.paid; pay += e.paid * e.rate; });
+    list.forEach(function (e) { worked += e.worked; paid += e.paid; pay += e.paid * e.rate * (e.mult || 1); });
     return {
       n: list.length, worked: worked, paid: paid, pay: pay,
       real: worked > 0 ? pay / worked : null,
@@ -288,7 +300,7 @@ tr.editing td { background: var(--accent-soft); }
   }
   function inRange(r) {
     return Object.keys(state.entries).sort().filter(function (d) { return d >= r[0] && d <= r[1]; })
-      .map(function (d) { return state.entries[d]; });
+      .map(function (d) { var e = state.entries[d]; return state.whatIf != null ? { date: e.date, worked: e.worked, paid: e.paid, rate: state.whatIf, mult: e.mult || 1 } : e; });
   }
 
   /* ---------- storage ---------- */
@@ -333,7 +345,7 @@ tr.editing td { background: var(--accent-soft); }
     var clean = {};
     Object.keys(entries).forEach(function (k) {
       var e = entries[k];
-      if (e && typeof e.worked === "number" && typeof e.paid === "number" && typeof e.rate === "number") clean[k] = { date: k, worked: e.worked, paid: e.paid, rate: e.rate };
+      if (e && typeof e.worked === "number" && typeof e.paid === "number" && typeof e.rate === "number") clean[k] = { date: k, worked: e.worked, paid: e.paid, rate: e.rate, mult: typeof e.mult === "number" && e.mult > 0 ? e.mult : 1 };
     });
     state.entries = clean;
     state.settings = Object.assign({}, DEFAULTS, settings);
@@ -383,6 +395,7 @@ tr.editing td { background: var(--accent-soft); }
         : "You worked <b>" + hrs(-t.gap) + " h</b> more than you were paid for. Spread across all <b>" + hrs(t.worked) + " h</b>, that lowers every hour.";
     }
     el.innerHTML =
+      (state.whatIf != null ? '<div><span class="delta" style="margin:0 0 12px">What if: paid ' + money(state.whatIf) + '/h base rate. Not saved.</span></div>' : '') +
       '<div class="hero"><div>' +
         '<h2>Real hourly rate</h2>' +
         '<div class="big num">' + (real == null ? "—" : money(real)) + '<small> /h</small></div>' +
@@ -459,11 +472,12 @@ tr.editing td { background: var(--accent-soft); }
   function renderLog() {
     var r = range(), list = inRange(r), el = $("log");
     $("logTitle").textContent = "Days in this period";
+    $("whatifBtn").textContent = $("whatif").hidden ? "What if I was paid a different rate?" : "Close what-if";
     if (!list.length) { el.innerHTML = '<div class="empty">Nothing logged for ' + (state.mode === "custom" ? "these dates" : "this period") + ".</div>"; return; }
     var rows = list.slice().reverse().map(function (e) {
-      var pay = e.paid * e.rate, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
+      var m = e.mult || 1, pay = e.paid * e.rate * m, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
       return '<tr class="' + (state.editing === e.date ? "editing" : "") + '"><td>' + DOW[d.getDay()] + " " + nice(e.date, true) + "</td>" +
-        '<td>' + stepper(e, "worked") + '</td><td>' + stepper(e, "paid") + '</td><td class="num">' + money(e.rate) + '</td>' +
+        '<td>' + stepper(e, "worked") + '</td><td>' + stepper(e, "paid") + '</td><td class="num">' + money(e.rate) + (m !== 1 ? ' <small style="color:var(--muted)">&times;' + m + '</small>' : '') + '</td>' +
         '<td class="num">' + money(pay) + '</td><td class="num"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
         '<td class="act"><button class="quiet" data-copy="' + e.date + '|-1" title="Copy this day to the day before" aria-label="Copy to the day before">&larr; Copy</button><button class="quiet" data-copy="' + e.date + '|1" title="Copy this day to the day after" aria-label="Copy to the day after">Copy &rarr;</button><button class="quiet" data-edit="' + e.date + '">Edit</button><button class="quiet danger" data-del="' + e.date + '">' + (state.confirmDel === e.date ? "Sure?" : "Delete") + '</button></td></tr>';
     }).join("");
@@ -485,10 +499,12 @@ tr.editing td { background: var(--accent-soft); }
     $("f-worked").value = "";
     $("f-paid").value = state.settings.paidHours;
     $("f-rate").value = state.settings.rate;
+    fillMult(1);
     $("d-rate").value = state.settings.rate;
     $("d-paid").value = state.settings.paidHours;
     $("d-cur").value = state.settings.currency;
     $("d-days").value = state.settings.days;
+    $("d-ot").value = state.settings.overtime;
     $("d-weeks").value = state.settings.weeks;
     $("d-type").value = state.settings.payType;
     $("formTitle").textContent = "Log a day";
@@ -496,18 +512,28 @@ tr.editing td { background: var(--accent-soft); }
     $("cancel").hidden = true;
   }
   function renderPreview() {
-    var w = num($("f-worked").value), p = num($("f-paid").value), r = num($("f-rate").value);
-    $("preview").textContent = (w > 0 && p >= 0 && r >= 0) ? "This day: " + money(p * r) + " earned, " + money(p * r / w) + "/h real" : "";
+    var w = num($("f-worked").value), p = num($("f-paid").value), r = num($("f-rate").value), m = num($("f-mult").value) || 1;
+    $("preview").textContent = (w > 0 && p >= 0 && r >= 0) ? "This day: " + money(p * r * m) + " earned, " + money(p * r * m / w) + "/h real" : "";
   }
   function startEdit(date) {
     var e = state.entries[date]; if (!e) return;
     state.editing = date;
     $("f-date").value = e.date; $("f-worked").value = e.worked; $("f-paid").value = e.paid; $("f-rate").value = e.rate;
+    fillMult(e.mult || 1);
     $("formTitle").textContent = "Edit day";
     $("save").textContent = "Update day";
     $("cancel").hidden = false;
     renderPreview(); renderLog();
     $("form").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  function fillMult(sel) {
+    var ot = state.settings.overtime, vals = [1], el = $("f-mult");
+    if (ot !== 1) vals.push(ot);
+    if (sel && vals.indexOf(sel) < 0) vals.push(sel);
+    el.innerHTML = vals.map(function (v) {
+      return '<option value="' + v + '">' + (v === 1 ? "Normal (1×)" : v === ot ? "Overtime (" + v + "×)" : "Other (" + v + "×)") + "</option>";
+    }).join("");
+    el.value = String(sel || 1);
   }
   var saveTimers = {};
   function stepHours(arg) {
@@ -524,7 +550,7 @@ tr.editing td { background: var(--accent-soft); }
     var p = arg.split("|"), src = state.entries[p[0]]; if (!src) return;
     var target = addDays(p[0], +p[1]), td = parse(target), label = DOW[td.getDay()] + " " + nice(target, true);
     if (state.entries[target]) { flash(label + " already has an entry. Edit or delete it first."); return; }
-    var e = { date: target, worked: src.worked, paid: src.paid, rate: src.rate };
+    var e = { date: target, worked: src.worked, paid: src.paid, rate: src.rate, mult: src.mult || 1 };
     state.entries[target] = e; render(); flash("Copied to " + label);
     persist(store.saveEntry(e));
   }
@@ -541,13 +567,14 @@ tr.editing td { background: var(--accent-soft); }
     $("today").onclick = function () { state.anchor = todayStr(); if (state.mode === "custom") { state.from = state.to = todayStr(); } render(); };
     $("from").onchange = function () { if ($("from").value) { state.from = $("from").value; render(); } };
     $("to").onchange = function () { if ($("to").value) { state.to = $("to").value; render(); } };
-    ["f-worked", "f-paid", "f-rate"].forEach(function (id) { $(id).addEventListener("input", renderPreview); });
+    ["f-worked", "f-paid", "f-rate", "f-mult"].forEach(function (id) { $(id).addEventListener("input", renderPreview); });
 
     $("form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var date = $("f-date").value, w = num($("f-worked").value), p = num($("f-paid").value), r = num($("f-rate").value);
+      var m = num($("f-mult").value); if (!(m > 0)) m = 1;
       if (!date || !(w >= 0) || !(p >= 0) || !(r >= 0)) return;
-      var wasEditing = state.editing, e = { date: date, worked: w, paid: p, rate: r };
+      var wasEditing = state.editing, e = { date: date, worked: w, paid: p, rate: r, mult: m };
       state.entries[date] = e;
       var jobs = [store.saveEntry(e)];
       if (wasEditing && wasEditing !== date) { delete state.entries[wasEditing]; jobs.push(store.deleteEntry(wasEditing)); }
@@ -559,6 +586,14 @@ tr.editing td { background: var(--accent-soft); }
       persist(Promise.all(jobs));
     });
     $("cancel").onclick = stopEdit;
+    $("whatifBtn").onclick = function () {
+      var opening = $("whatif").hidden;
+      $("whatif").hidden = !opening;
+      if (opening) { $("wi-rate").value = state.settings.rate; state.whatIf = state.settings.rate; render(); $("wi-rate").focus(); $("wi-rate").select(); }
+      else { state.whatIf = null; render(); }
+    };
+    $("wi-rate").addEventListener("input", function () { var v = num($("wi-rate").value); state.whatIf = v >= 0 ? v : null; render(); });
+    $("wi-reset").onclick = function () { state.whatIf = null; $("whatif").hidden = true; render(); };
     $("log").addEventListener("click", function (ev) {
       var t = ev.target, ed = t.getAttribute && t.getAttribute("data-edit"), del = t.getAttribute && t.getAttribute("data-del"), cp = t.getAttribute && t.getAttribute("data-copy"), st = t.getAttribute && t.getAttribute("data-step");
       if (st) { stepHours(st); }
@@ -574,12 +609,13 @@ tr.editing td { background: var(--accent-soft); }
     });
     function saveDefaults() {
       var r = num($("d-rate").value), p = num($("d-paid").value);
-      var dy = num($("d-days").value), wk = num($("d-weeks").value);
+      var dy = num($("d-days").value), wk = num($("d-weeks").value), ot = num($("d-ot").value), oldOt = state.settings.overtime, curM = num($("f-mult").value) || 1;
       state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value,
-        days: dy >= 1 && dy <= 7 ? dy : DEFAULTS.days, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value };
+        days: dy >= 1 && dy <= 7 ? dy : DEFAULTS.days, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime };
+      if (!state.editing) fillMult(curM === oldOt && oldOt !== 1 ? state.settings.overtime : curM);
       render(); persist(store.saveSettings(state.settings));
     }
-    ["d-rate", "d-paid", "d-cur", "d-days", "d-weeks", "d-type"].forEach(function (id) { $(id).addEventListener("change", saveDefaults); });
+    ["d-rate", "d-paid", "d-cur", "d-days", "d-weeks", "d-type", "d-ot"].forEach(function (id) { $(id).addEventListener("change", saveDefaults); });
     $("b-show").onclick = function () {
       $("b-text").value = JSON.stringify({ entries: state.entries, settings: state.settings }, null, 1);
       $("b-text").select();
@@ -590,7 +626,7 @@ tr.editing td { background: var(--accent-soft); }
       for (var k in ents) {
         var e = ents[k];
         if (/^\d{4}-\d\d-\d\d$/.test(k) && e && typeof e.worked === "number" && typeof e.paid === "number" && typeof e.rate === "number") {
-          var c = { date: k, worked: e.worked, paid: e.paid, rate: e.rate };
+          var c = { date: k, worked: e.worked, paid: e.paid, rate: e.rate, mult: typeof e.mult === "number" && e.mult > 0 ? e.mult : 1 };
           state.entries[k] = c; n++;
           try { await store.saveEntry(c); } catch (x) {}
         }
