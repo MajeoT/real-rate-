@@ -124,6 +124,12 @@ td.act { text-align: right; }
 tr.editing td { background: var(--accent-soft); }
 .pos { color: var(--gain); } .neg { color: var(--loss); }
 
+.tax { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.tax h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.tax table { min-width: 0; font-size: 14px; }
+.tax td:first-child, .tax th:first-child { padding-left: 0; }
+.tax tr.total td { font-weight: 600; border-bottom: 0; }
+.tax .fine { margin-top: 10px; font-size: 12px; color: var(--muted); }
 .stepper { display: inline-flex; align-items: center; gap: 4px; }
 .stepper .arrows { display: inline-flex; flex-direction: column; }
 .stepper .arrows button { padding: 0 5px; font-size: 9px; line-height: 13px; border-radius: 3px; color: var(--muted); }
@@ -191,6 +197,11 @@ tr.editing td { background: var(--accent-soft); }
             <option value="CAD">CAD $</option><option value="AUD">AUD $</option><option value="NZD">NZD $</option>
           </select>
         </label>
+        <label for="d-days">Days worked per week<input id="d-days" type="number" step="1" min="1" max="7" inputmode="numeric"></label>
+        <label for="d-weeks">Weeks worked per year<input id="d-weeks" type="number" step="1" min="1" max="52" inputmode="numeric"></label>
+        <label for="d-type">Pay type
+          <select id="d-type"><option value="employed">Employed (PAYE)</option><option value="self">Self-employed</option></select>
+        </label>
       </div>
     </details>
   </section>
@@ -210,7 +221,7 @@ tr.editing td { background: var(--accent-soft); }
 <script>
 (function () {
   "use strict";
-  var DEFAULTS = { rate: 25, paidHours: 12, currency: "GBP" };
+  var DEFAULTS = { rate: 25, paidHours: 12, currency: "GBP", days: 5, weeks: 52, payType: "employed" };
   var state = {
     entries: {},            // date -> {date, worked, paid, rate}
     settings: Object.assign({}, DEFAULTS),
@@ -381,7 +392,32 @@ tr.editing td { background: var(--accent-soft); }
         stat("Total pay", money(t.pay)) + stat("Days logged", t.n) +
         stat("Hours worked", hrs(t.worked)) + stat("Hours paid", hrs(t.paid)) +
         '<div class="stat" style="grid-column:1/-1;padding-left:0;border-left:0"><div class="k">' + gapLabel + '</div><div class="v num ' + (t.gap > 0 ? "pos" : t.gap < 0 ? "neg" : "") + '">' + hrs(Math.abs(t.gap)) + ' h</div></div>' +
-      '</div></div>' + (explain ? '<div class="explain">' + explain + '</div>' : "");
+      '</div></div>' + (explain ? '<div class="explain">' + explain + '</div>' : "") + taxBlock(t);
+  }
+  function ukTax(inc, selfEmp) {
+    var pa = Math.max(0, 12570 - Math.max(0, (inc - 100000) / 2));
+    var taxable = Math.max(0, inc - pa), tax = Math.min(taxable, 37700) * 0.2;
+    if (taxable > 37700) tax += (Math.min(taxable, 125140) - 37700) * 0.4;
+    if (taxable > 125140) tax += (taxable - 125140) * 0.45;
+    var ni = Math.max(0, Math.min(inc, 50270) - 12570) * (selfEmp ? 0.06 : 0.08) + Math.max(0, inc - 50270) * 0.02;
+    return { tax: tax, ni: ni };
+  }
+  function taxBlock(t) {
+    var s = state.settings;
+    if (s.currency !== "GBP") return '<div class="tax"><div class="fine">Take-home estimates are for UK pay, so they are hidden while the currency is not GBP.</div></div>';
+    var selfEmp = s.payType === "self", annual = t.n ? t.pay / t.n * s.days * s.weeks : 0;
+    var r = ukTax(annual, selfEmp), f = annual > 0 ? 1 / annual : 0, kp = t.pay;
+    var pTax = r.tax * f * kp, pNi = r.ni * f * kp, pNet = kp - pTax - pNi;
+    var keep = annual > 0 ? (annual - r.tax - r.ni) / annual : 0;
+    function row(label, p, m, cls) { return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="num">' + money(p) + '</td><td class="num">' + money(m) + '</td></tr>'; }
+    return '<div class="tax"><h3>Estimated take-home</h3><div class="scroll"><table><thead><tr><th></th><th>This period</th><th>Per month</th></tr></thead><tbody>' +
+      row("Pay before tax", kp, annual / 12) +
+      row("Income tax", -pTax, -r.tax / 12) +
+      row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -pNi, -r.ni / 12) +
+      row(selfEmp ? "Left after tax and NI" : "Take-home", pNet, (annual - r.tax - r.ni) / 12, "total") +
+      '</tbody></table></div>' +
+      (t.real != null ? '<div class="explain">Real rate after tax: <b class="num">' + money(t.real * keep) + '/h</b></div>' : '') +
+      '<div class="fine">Estimate only. Monthly figures assume your average day in this period, ' + s.days + ' days a week for ' + s.weeks + ' weeks a year (about ' + money(annual) + ' a year before tax). Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change the assumptions under Defaults for new days.</div></div>';
   }
   function stat(k, v) { return '<div class="stat"><div class="k">' + k + '</div><div class="v num">' + v + '</div></div>'; }
 
@@ -452,6 +488,9 @@ tr.editing td { background: var(--accent-soft); }
     $("d-rate").value = state.settings.rate;
     $("d-paid").value = state.settings.paidHours;
     $("d-cur").value = state.settings.currency;
+    $("d-days").value = state.settings.days;
+    $("d-weeks").value = state.settings.weeks;
+    $("d-type").value = state.settings.payType;
     $("formTitle").textContent = "Log a day";
     $("save").textContent = "Save day";
     $("cancel").hidden = true;
@@ -535,10 +574,12 @@ tr.editing td { background: var(--accent-soft); }
     });
     function saveDefaults() {
       var r = num($("d-rate").value), p = num($("d-paid").value);
-      state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value };
+      var dy = num($("d-days").value), wk = num($("d-weeks").value);
+      state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value,
+        days: dy >= 1 && dy <= 7 ? dy : DEFAULTS.days, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value };
       render(); persist(store.saveSettings(state.settings));
     }
-    ["d-rate", "d-paid", "d-cur"].forEach(function (id) { $(id).addEventListener("change", saveDefaults); });
+    ["d-rate", "d-paid", "d-cur", "d-days", "d-weeks", "d-type"].forEach(function (id) { $(id).addEventListener("change", saveDefaults); });
     $("b-show").onclick = function () {
       $("b-text").value = JSON.stringify({ entries: state.entries, settings: state.settings }, null, 1);
       $("b-text").select();
