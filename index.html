@@ -203,7 +203,7 @@ tr.editing td { background: var(--accent-soft); }
             <option value="CAD">CAD $</option><option value="AUD">AUD $</option><option value="NZD">NZD $</option>
           </select>
         </label>
-        <label for="d-days">Days worked per week<input id="d-days" type="number" step="1" min="1" max="7" inputmode="numeric"></label>
+        <label for="d-hpw">Hours paid per week<input id="d-hpw" type="number" step="0.25" min="1" max="168" inputmode="decimal"></label>
         <label for="d-weeks">Weeks worked per year<input id="d-weeks" type="number" step="1" min="1" max="52" inputmode="numeric"></label>
         <label for="d-type">Pay type
           <select id="d-type"><option value="employed">Employed (PAYE)</option><option value="self">Self-employed</option></select>
@@ -233,7 +233,7 @@ tr.editing td { background: var(--accent-soft); }
 <script>
 (function () {
   "use strict";
-  var DEFAULTS = { rate: 25, paidHours: 12, currency: "GBP", days: 5, weeks: 52, payType: "employed", overtime: 1.5 };
+  var DEFAULTS = { rate: 25, paidHours: 12, currency: "GBP", days: 5, weekHours: 48, weeks: 52, payType: "employed", overtime: 1.5 };
   var state = {
     entries: {},            // date -> {date, worked, paid, rate}
     settings: Object.assign({}, DEFAULTS),
@@ -418,23 +418,23 @@ tr.editing td { background: var(--accent-soft); }
   function taxBlock(t) {
     var s = state.settings;
     if (s.currency !== "GBP") return '<div class="tax"><div class="fine">Take-home estimates are for UK pay, so they are hidden while the currency is not GBP.</div></div>';
-    if (t.real == null) return "";
+    if (!(t.paid > 0) || t.real == null) return "";
     var selfEmp = s.payType === "self";
-    // Everything below starts from the real rate (pay per hour actually worked).
-    var hoursPerDay = t.worked / t.n, hoursYear = hoursPerDay * s.days * s.weeks;
-    var annual = t.real * hoursYear;
-    var r = ukTax(annual, selfEmp), net = annual - r.tax - r.ni;
-    var f = hoursYear > 0 ? t.worked / hoursYear : 0;
-    function row(label, perHour, period, month, cls) {
-      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="num">' + money(perHour) + '</td><td class="num">' + money(period) + '</td><td class="num">' + money(month) + '</td></tr>';
+    // Weekly pay = hours paid per week x average paid rate (multipliers included). Month = year / 12.
+    var weekly = s.weekHours * t.nominal, annual = weekly * s.weeks;
+    var hoursYear = s.weekHours * s.weeks * (t.worked / t.paid);
+    var r = ukTax(annual, selfEmp), net = annual - r.tax - r.ni, f = annual > 0 ? t.pay / annual : 0;
+    function row(label, v, cls) {
+      // v = yearly amount; hourly = per hour actually worked
+      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="num">' + money(v / hoursYear) + '</td><td class="num">' + money(v * f) + '</td><td class="num">' + money(v / s.weeks) + '</td><td class="num">' + money(v / 12) + '</td></tr>';
     }
-    return '<div class="tax"><h3>Estimated take-home at your real rate</h3><div class="scroll"><table><thead><tr><th></th><th>Per hour worked</th><th>This period</th><th>Per month</th></tr></thead><tbody>' +
-      row("Pay before tax", t.real, t.real * t.worked, annual / 12) +
-      row("Income tax", -r.tax / hoursYear, -r.tax * f, -r.tax / 12) +
-      row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -r.ni / hoursYear, -r.ni * f, -r.ni / 12) +
-      row(selfEmp ? "Left after tax and NI" : "Take-home", net / hoursYear, net * f, net / 12, "total") +
+    return '<div class="tax"><h3>Estimated take-home at your real rate</h3><div class="scroll"><table><thead><tr><th></th><th>Per hour worked</th><th>This period</th><th>Per week</th><th>Per month</th></tr></thead><tbody>' +
+      row("Pay before tax", annual) +
+      row("Income tax", -r.tax) +
+      row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -r.ni) +
+      row(selfEmp ? "Left after tax and NI" : "Take-home", net, "total") +
       '</tbody></table></div>' +
-      '<div class="fine">Based on your real rate of ' + money(t.real) + '/h and an average of ' + hrs(hoursPerDay) + ' h worked per logged day, ' + s.days + ' days a week for ' + s.weeks + ' weeks a year. That is about ' + hrs(hoursYear) + ' h and ' + money(annual) + ' a year before tax, or ' + hrs(hoursYear / 12) + ' h a month. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change days and weeks under Defaults for new days.</div></div>';
+      '<div class="fine">Based on ' + hrs(s.weekHours) + ' hours paid a week at your average paid rate of ' + money(t.nominal) + '/h, which is ' + money(weekly) + ' a week, ' + s.weeks + ' weeks a year. Month = year \u00f7 12, so ' + money(annual / 12) + ' before tax. Per hour worked uses your real rate of ' + money(t.real) + '/h. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change hours and weeks under Defaults for new days.</div></div>';
   }
   function stat(k, v) { return '<div class="stat"><div class="k">' + k + '</div><div class="v num">' + v + '</div></div>'; }
 
@@ -507,7 +507,7 @@ tr.editing td { background: var(--accent-soft); }
     $("d-rate").value = state.settings.rate;
     $("d-paid").value = state.settings.paidHours;
     $("d-cur").value = state.settings.currency;
-    $("d-days").value = state.settings.days;
+    $("d-hpw").value = state.settings.weekHours;
     $("d-ot").value = state.settings.overtime;
     $("d-weeks").value = state.settings.weeks;
     $("d-type").value = state.settings.payType;
@@ -620,13 +620,13 @@ tr.editing td { background: var(--accent-soft); }
     });
     function saveDefaults() {
       var r = num($("d-rate").value), p = num($("d-paid").value);
-      var dy = num($("d-days").value), wk = num($("d-weeks").value), ot = num($("d-ot").value), oldOt = state.settings.overtime, curM = getMult();
+      var dy = num($("d-hpw").value), wk = num($("d-weeks").value), ot = num($("d-ot").value), oldOt = state.settings.overtime, curM = getMult();
       state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value,
-        days: dy >= 1 && dy <= 7 ? dy : DEFAULTS.days, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime };
+        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime };
       if (!state.editing) fillMult(curM === oldOt && oldOt !== 1 ? state.settings.overtime : curM);
       render(); persist(store.saveSettings(state.settings));
     }
-    ["d-rate", "d-paid", "d-cur", "d-days", "d-weeks", "d-type", "d-ot"].forEach(function (id) { $(id).addEventListener("change", saveDefaults); });
+    ["d-rate", "d-paid", "d-cur", "d-hpw", "d-weeks", "d-type", "d-ot"].forEach(function (id) { $(id).addEventListener("change", saveDefaults); });
     $("b-show").onclick = function () {
       $("b-text").value = JSON.stringify({ entries: state.entries, settings: state.settings }, null, 1);
       $("b-text").select();
