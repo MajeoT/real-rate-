@@ -138,11 +138,18 @@ tr.editing td { background: var(--accent-soft); }
 .whatif { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; padding: 12px; background: var(--accent-soft); border-radius: 5px; margin-bottom: 12px; }
 .whatif label { flex: 0 1 180px; }
 .whatif .fine { flex: 1 1 220px; font-size: 12px; color: var(--muted); }
+.pgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 12px 0 16px; }
+.pgrid fieldset { border: 1px solid var(--line); border-radius: 5px; padding: 12px; margin: 0; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-content: start; }
+.pgrid legend { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 0 6px; }
+.pgrid .wide { grid-column: 1 / -1; }
+.plan table { min-width: 560px; }
+.plan tr.sub td { color: var(--muted); }
 .stepper { display: inline-flex; align-items: center; gap: 4px; }
 .stepper .arrows { display: inline-flex; flex-direction: column; }
 .stepper .arrows button { padding: 0 5px; font-size: 9px; line-height: 13px; border-radius: 3px; color: var(--muted); }
 .stepper .arrows button:hover { color: var(--accent); }
 @media (max-width: 640px) {
+  .pgrid { grid-template-columns: 1fr; }
   .hero { grid-template-columns: 1fr; }
   .form { grid-template-columns: 1fr 1fr; }
   .defaults { grid-template-columns: 1fr 1fr; }
@@ -231,6 +238,27 @@ tr.editing td { background: var(--accent-soft); }
       <div class="form-actions" style="margin-top:8px"><button type="button" id="b-show">Show backup</button><button type="button" id="b-load">Restore from text</button></div>
     </details>
   </section>
+
+  <section class="panel plan" id="planner" aria-label="Monthly wage planner">
+    <h2>Monthly wage planner</h2>
+    <p class="explain" style="margin:0">Plan a typical month on its own, separate from the days you log. Enter your usual week, then any overtime and how many times you do it in a month.</p>
+    <div class="pgrid">
+      <fieldset>
+        <legend>Usual week</legend>
+        <label for="p-paid">Hours paid per week<input id="p-paid" type="number" step="0.25" min="0" max="168" inputmode="decimal"></label>
+        <label for="p-worked">Hours worked per week<input id="p-worked" type="number" step="0.25" min="0" max="168" inputmode="decimal"></label>
+        <label for="p-rate" class="wide">Hourly rate<input id="p-rate" type="number" step="0.01" min="0" inputmode="decimal"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Overtime</legend>
+        <label for="p-otpaid">Hours paid per overtime shift<input id="p-otpaid" type="number" step="0.25" min="0" max="24" inputmode="decimal"></label>
+        <label for="p-otworked">Hours worked per overtime shift<input id="p-otworked" type="number" step="0.25" min="0" max="24" inputmode="decimal"></label>
+        <label for="p-otmult">Pay multiplier<input id="p-otmult" type="number" step="0.05" min="0.1" max="10" inputmode="decimal"></label>
+        <label for="p-ottimes">Overtime shifts per month<input id="p-ottimes" type="number" step="1" min="0" max="31" inputmode="numeric"></label>
+      </fieldset>
+    </div>
+    <div id="plannerOut" aria-live="polite"></div>
+  </section>
 </div>
 
 <script>
@@ -292,10 +320,10 @@ tr.editing td { background: var(--accent-soft); }
 
   /* ---------- math ---------- */
   function sum(list) {
-    var worked = 0, paid = 0, pay = 0;
-    list.forEach(function (e) { worked += e.worked; paid += e.paid; pay += e.paid * e.rate * (e.mult || 1); });
+    var worked = 0, paid = 0, pay = 0, base = 0;
+    list.forEach(function (e) { worked += e.worked; paid += e.paid; pay += e.paid * e.rate * (e.mult || 1); base += e.paid * e.rate; });
     return {
-      n: list.length, worked: worked, paid: paid, pay: pay,
+      n: list.length, worked: worked, paid: paid, pay: pay, baseNominal: paid > 0 ? base / paid : null,
       real: worked > 0 ? pay / worked : null,
       nominal: paid > 0 ? pay / paid : null,
       gap: paid - worked
@@ -354,6 +382,7 @@ tr.editing td { background: var(--accent-soft); }
     state.settings = Object.assign({}, DEFAULTS, settings);
     state.loaded = true;
     if (!state.editing) fillFormDefaults();
+    fillPlanner();
     render();
   }
   function persist(p) {
@@ -425,7 +454,7 @@ tr.editing td { background: var(--accent-soft); }
     var selfEmp = s.payType === "self";
     // A typical week (Monday to Sunday): hours paid per week x average paid rate. Pay is the same however you slice it;
     // only the hourly figures differ, by dividing by hours paid or by hours actually worked.
-    var weekly = s.weekHours * t.nominal, annual = weekly * s.weeks;
+    var weekly = s.weekHours * t.baseNominal, annual = weekly * s.weeks;
     var paidYear = s.weekHours * s.weeks, workedYear = paidYear * (t.worked / t.paid), workedWeek = s.weekHours * (t.worked / t.paid);
     var r = ukTax(annual, selfEmp), net = annual - r.tax - r.ni, f = annual > 0 ? t.pay / annual : 0;
     function row(label, v, cls) {
@@ -442,7 +471,43 @@ tr.editing td { background: var(--accent-soft); }
       row(selfEmp ? "Left after tax and NI" : "Take-home", net, "total") +
       '</tbody></table></div>' +
       '<div class="explain">In a typical week you are paid for <b>' + hrs(s.weekHours) + ' h</b> and work <b>' + hrs(workedWeek) + ' h</b>. The pay is the same either way. <b>Paid hour</b> divides it by the hours you are paid for. <b>Real hour</b> divides it by the hours you actually work.</div>' +
-      '<div class="fine">Week = ' + hrs(s.weekHours) + ' h paid \u00d7 your average paid rate of ' + money(t.nominal) + '/h = ' + money(weekly) + '. Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + '. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change hours and weeks under Defaults for new days.</div></div>';
+      '<div class="fine">Week = ' + hrs(s.weekHours) + ' h paid \u00d7 your average base rate of ' + money(t.baseNominal) + '/h = ' + money(weekly) + '. Overtime multipliers are left out of this projection, so use the monthly wage planner below for overtime. Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + '. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change hours and weeks under Defaults for new days.</div></div>';
+  }
+  var PIDS = { paidWeek: "p-paid", workedWeek: "p-worked", rate: "p-rate", otPaid: "p-otpaid", otWorked: "p-otworked", otMult: "p-otmult", otTimes: "p-ottimes" };
+  function planner() {
+    var s = state.settings;
+    return Object.assign({ paidWeek: s.weekHours, workedWeek: s.weekHours, rate: s.rate, otPaid: 8, otWorked: 8, otMult: s.overtime, otTimes: 2 }, s.planner || {});
+  }
+  function fillPlanner() {
+    var a = document.activeElement; if (a && a.id && a.id.indexOf("p-") === 0) return;
+    var p = planner(); Object.keys(PIDS).forEach(function (k) { $(PIDS[k]).value = p[k]; });
+  }
+  function renderPlanner() {
+    var p = planner(), s = state.settings, WPM = 52 / 12, gbp = s.currency === "GBP", selfEmp = s.payType === "self";
+    var stdPay = p.paidWeek * p.rate * WPM, otPay = p.otPaid * p.rate * p.otMult * p.otTimes, gross = stdPay + otPay;
+    var paidH = p.paidWeek * WPM + p.otPaid * p.otTimes, workedH = p.workedWeek * WPM + p.otWorked * p.otTimes;
+    var r = gbp ? ukTax(gross * 12, selfEmp) : { tax: 0, ni: 0 }, net = gross - r.tax / 12 - r.ni / 12;
+    function cell(v, h) { return h > 0 ? money(v / h) : "\u2014"; }
+    function row(label, m, hourly, cls) {
+      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td>' +
+        '<td class="num">' + (hourly ? cell(m, paidH) : "") + '</td><td class="num realc">' + (hourly ? cell(m, workedH) : "") + '</td>' +
+        '<td class="num sep">' + money(m) + '</td><td class="num">' + money(m * 12) + '</td></tr>';
+    }
+    var rows = row("Usual weeks (" + hrs(p.paidWeek) + " h \u00d7 " + money(p.rate) + " \u00d7 52 \u00f7 12)", stdPay, false, "sub") +
+      row("Overtime (" + hrs(p.otPaid) + " h \u00d7 " + hrs(p.otMult) + "\u00d7 \u00d7 " + p.otTimes + ")", otPay, false, "sub") +
+      row("Pay before tax", gross, true, "");
+    if (gbp) rows += row("Income tax", -r.tax / 12, true) + row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -r.ni / 12, true) + row(selfEmp ? "Left after tax and NI" : "Take-home", net, true, "total");
+    $("plannerOut").innerHTML = '<div class="scroll"><table><thead><tr><th></th><th>Paid hour</th><th>Real hour</th><th class="sep">Month</th><th>Year</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="explain">In a typical month you are paid for <b>' + hrs(paidH) + ' h</b> and work <b>' + hrs(workedH) + ' h</b>. Pay before tax is <b>' + money(gross) + '</b>, which is <b>' + (workedH > 0 ? money(gross / workedH) : "\u2014") + '</b> for each hour worked.</div>' +
+      '<div class="fine">A month is 52 \u00f7 12 weeks. Tax assumes every month is like this one' + (gbp ? ', using 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no pension or student loan' : '. Tax is only estimated for GBP') + '. Saved with your settings and not affected by the days you log.</div>';
+  }
+  var plannerTimer;
+  function plannerInput() {
+    var o = {};
+    Object.keys(PIDS).forEach(function (k) { var v = num($(PIDS[k]).value); o[k] = v >= 0 ? v : 0; });
+    state.settings.planner = o; renderPlanner();
+    clearTimeout(plannerTimer);
+    plannerTimer = setTimeout(function () { persist(store.saveSettings(state.settings)); }, 600);
   }
   function stat(k, v) { return '<div class="stat"><div class="k">' + k + '</div><div class="v num">' + v + '</div></div>'; }
 
@@ -503,7 +568,7 @@ tr.editing td { background: var(--accent-soft); }
     else if (!state.loaded) s.textContent = "Loading…";
     else s.textContent = state.storage === "local" ? "Saved in this browser only" : "Saved to your account";
   }
-  function render() { renderPicker(); renderSummary(); renderChart(); renderLog(); renderStatus(); renderPreview(); }
+  function render() { renderPicker(); renderSummary(); renderChart(); renderLog(); renderStatus(); renderPreview(); renderPlanner(); }
 
   /* ---------- form ---------- */
   function fillFormDefaults() {
@@ -604,6 +669,7 @@ tr.editing td { background: var(--accent-soft); }
       persist(Promise.all(jobs));
     });
     $("f-mult").addEventListener("change", function () { var c = $("f-mult").value === "custom"; $("f-mult-x").hidden = !c; if (c) $("f-mult-x").focus(); renderPreview(); });
+    Object.keys(PIDS).forEach(function (k) { $(PIDS[k]).addEventListener("input", plannerInput); });
     $("cancel").onclick = stopEdit;
     $("whatifBtn").onclick = function () {
       var opening = $("whatif").hidden;
@@ -630,7 +696,7 @@ tr.editing td { background: var(--accent-soft); }
       var r = num($("d-rate").value), p = num($("d-paid").value);
       var dy = num($("d-hpw").value), wk = num($("d-weeks").value), ot = num($("d-ot").value), oldOt = state.settings.overtime, curM = getMult();
       state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value,
-        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime };
+        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime, planner: state.settings.planner || null };
       if (!state.editing) fillMult(curM === oldOt && oldOt !== 1 ? state.settings.overtime : curM);
       render(); persist(store.saveSettings(state.settings));
     }
