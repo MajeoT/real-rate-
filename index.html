@@ -124,6 +124,10 @@ td.act { text-align: right; }
 tr.editing td { background: var(--accent-soft); }
 .pos { color: var(--gain); } .neg { color: var(--loss); }
 
+.stepper { display: inline-flex; align-items: center; gap: 4px; }
+.stepper .arrows { display: inline-flex; flex-direction: column; }
+.stepper .arrows button { padding: 0 5px; font-size: 9px; line-height: 13px; border-radius: 3px; color: var(--muted); }
+.stepper .arrows button:hover { color: var(--accent); }
 @media (max-width: 640px) {
   .hero { grid-template-columns: 1fr; }
   .form { grid-template-columns: 1fr 1fr; }
@@ -410,6 +414,12 @@ tr.editing td { background: var(--accent-soft); }
       '<div class="legend"><span><i></i>Real rate</span><span><i class="l"></i>Below paid rate</span><span><i class="n"></i>Paid rate (' + money(total.nominal || 0) + ')</span><span class="num">Top of chart ' + money(max) + '</span></div>';
   }
 
+  function stepper(e, f) {
+    var what = f === "worked" ? "hours worked" : "hours paid", d = e.date;
+    return '<span class="stepper"><span class="num">' + hrs(e[f]) + '</span><span class="arrows">' +
+      '<button type="button" class="quiet" data-step="' + d + '|' + f + '|1" aria-label="Increase ' + what + ' for ' + d + '">&#9650;</button>' +
+      '<button type="button" class="quiet" data-step="' + d + '|' + f + '|-1" aria-label="Decrease ' + what + ' for ' + d + '">&#9660;</button></span></span>';
+  }
   function renderLog() {
     var r = range(), list = inRange(r), el = $("log");
     $("logTitle").textContent = "Days in this period";
@@ -417,7 +427,7 @@ tr.editing td { background: var(--accent-soft); }
     var rows = list.slice().reverse().map(function (e) {
       var pay = e.paid * e.rate, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
       return '<tr class="' + (state.editing === e.date ? "editing" : "") + '"><td>' + DOW[d.getDay()] + " " + nice(e.date, true) + "</td>" +
-        '<td class="num">' + hrs(e.worked) + '</td><td class="num">' + hrs(e.paid) + '</td><td class="num">' + money(e.rate) + '</td>' +
+        '<td>' + stepper(e, "worked") + '</td><td>' + stepper(e, "paid") + '</td><td class="num">' + money(e.rate) + '</td>' +
         '<td class="num">' + money(pay) + '</td><td class="num"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
         '<td class="act"><button class="quiet" data-copy="' + e.date + '|-1" title="Copy this day to the day before" aria-label="Copy to the day before">&larr; Copy</button><button class="quiet" data-copy="' + e.date + '|1" title="Copy this day to the day after" aria-label="Copy to the day after">Copy &rarr;</button><button class="quiet" data-edit="' + e.date + '">Edit</button><button class="quiet danger" data-del="' + e.date + '">' + (state.confirmDel === e.date ? "Sure?" : "Delete") + '</button></td></tr>';
     }).join("");
@@ -459,6 +469,15 @@ tr.editing td { background: var(--accent-soft); }
     $("cancel").hidden = false;
     renderPreview(); renderLog();
     $("form").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  var saveTimers = {};
+  function stepHours(arg) {
+    var p = arg.split("|"), e = state.entries[p[0]]; if (!e) return;
+    e[p[1]] = Math.min(24, Math.max(0, Math.round((e[p[1]] + 0.25 * (+p[2])) * 100) / 100));
+    render();
+    var b = document.querySelector('[data-step="' + arg + '"]'); if (b) b.focus();
+    clearTimeout(saveTimers[p[0]]);
+    saveTimers[p[0]] = setTimeout(function () { var cur = state.entries[p[0]]; if (cur) persist(store.saveEntry(cur)); }, 500);
   }
   var noteTimer;
   function flash(msg) { state.note = msg; renderStatus(); clearTimeout(noteTimer); noteTimer = setTimeout(function () { state.note = ""; renderStatus(); }, 4000); }
@@ -502,8 +521,9 @@ tr.editing td { background: var(--accent-soft); }
     });
     $("cancel").onclick = stopEdit;
     $("log").addEventListener("click", function (ev) {
-      var t = ev.target, ed = t.getAttribute && t.getAttribute("data-edit"), del = t.getAttribute && t.getAttribute("data-del"), cp = t.getAttribute && t.getAttribute("data-copy");
-      if (cp) { state.confirmDel = null; copyDay(cp); }
+      var t = ev.target, ed = t.getAttribute && t.getAttribute("data-edit"), del = t.getAttribute && t.getAttribute("data-del"), cp = t.getAttribute && t.getAttribute("data-copy"), st = t.getAttribute && t.getAttribute("data-step");
+      if (st) { stepHours(st); }
+      else if (cp) { state.confirmDel = null; copyDay(cp); }
       else if (ed) { state.confirmDel = null; startEdit(ed); }
       else if (del) {
         if (state.confirmDel === del) {
