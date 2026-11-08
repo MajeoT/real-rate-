@@ -173,6 +173,22 @@ tr.editing td { background: var(--accent-soft); }
   .defaults { grid-template-columns: 1fr 1fr; }
   .preview { margin-left: 0; width: 100%; }
 }
+@media (max-width: 640px) {
+  #log table { min-width: 0; }
+  #log thead { display: none; }
+  #log tr { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  #log tr.editing { background: var(--accent-soft); }
+  #log tr.editing td { background: none; }
+  #log td { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 0; border: 0; white-space: normal; }
+  #log td::before { content: attr(data-label); font-family: var(--font-body); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  #log td.dt { grid-column: 1 / -1; font-weight: 600; }
+  #log td.act { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  #log td.dt::before, #log td.act::before { content: none; }
+  #log td.act button { padding: 8px 12px; border-color: var(--line); }
+  .stepper { gap: 8px; }
+  .stepper .arrows { flex-direction: row; gap: 6px; }
+  .stepper .arrows button { min-width: 44px; min-height: 40px; font-size: 13px; line-height: 1; border-color: var(--line); }
+}
 @media (prefers-reduced-motion: no-preference) { .col .bar { transition: height .2s; } }
 </style>
 
@@ -182,7 +198,7 @@ tr.editing td { background: var(--accent-soft); }
   <header>
     <div class="brand">
       <!-- Version: four decimals, start 0.1000, add 0.0001 to the last decimal on every update. -->
-      <h1>Real Rate <span class="ver num" title="Version">0.1004</span></h1>
+      <h1>Real Rate <span class="ver num" title="Version">0.1005</span></h1>
       <div class="by">Made by <a href="https://twitter.com/ToejahMM" target="_blank" rel="noopener noreferrer">@ToejahMM</a></div>
     </div>
     <span class="status" id="status" role="status">Loading…</span>
@@ -313,7 +329,7 @@ tr.editing td { background: var(--accent-soft); }
     entries: {},            // date -> {date, worked, paid, rate}
     settings: Object.assign({}, DEFAULTS),
     mode: "week", anchor: todayStr(), from: todayStr(), to: todayStr(),
-    editing: null, whatIf: null, loaded: false, storage: "pending", error: ""
+    editing: null, whatIf: null, dirty: {}, settingsDirty: false, formDirty: false, confirmReplace: null, loaded: false, storage: "pending", error: ""
   };
   var store = null;
 
@@ -422,10 +438,13 @@ tr.editing td { background: var(--accent-soft); }
       var e = entries[k];
       if (e && typeof e.worked === "number" && typeof e.paid === "number" && typeof e.rate === "number") clean[k] = { date: k, worked: e.worked, paid: e.paid, rate: e.rate, mult: typeof e.mult === "number" && e.mult > 0 ? e.mult : 1 };
     });
+    // Keep local changes that are not saved yet, so a save coming back cannot undo them.
+    Object.keys(state.dirty).forEach(function (d) { if (state.entries[d]) clean[d] = state.entries[d]; });
     state.entries = clean;
-    state.settings = Object.assign({}, DEFAULTS, settings);
+    if (!state.settingsDirty) state.settings = Object.assign({}, DEFAULTS, settings);
+    var first = !state.loaded;
     state.loaded = true;
-    if (!state.editing) fillFormDefaults();
+    if (!state.editing && (first || !state.formDirty)) fillFormDefaults();
     fillPlanner(); fillFuel();
     render();
   }
@@ -551,13 +570,21 @@ tr.editing td { background: var(--accent-soft); }
       '<div class="explain">Overtime pays <b>' + money(p.rate * p.otMult) + '/h</b> (' + money(p.rate) + ' \u00d7 ' + hrs(p.otMult) + '). In a typical month you are paid for <b>' + hrs(paidH) + ' h</b> and work <b>' + hrs(workedH) + ' h</b>. Pay before tax is <b>' + money(gross) + '</b>, which is <b>' + (workedH > 0 ? money(gross / workedH) : "\u2014") + '</b> for each hour worked.</div>' +
       '<div class="fine">A month is 52 \u00f7 12 weeks. Tax assumes every month is like this one' + (gbp ? ', using 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no pension or student loan' : '. Tax is only estimated for GBP') + '. Saved with your settings and not affected by the days you log.</div>';
   }
-  var plannerTimer;
+  var settingsTimer, settingsTok = 0;
+  function queueSettingsSave() {
+    var tok = ++settingsTok;
+    state.settingsDirty = true;
+    clearTimeout(settingsTimer);
+    settingsTimer = setTimeout(function () {
+      function done() { if (tok === settingsTok) state.settingsDirty = false; }
+      persist(store.saveSettings(state.settings).then(done, function (e) { done(); throw e; }));
+    }, 600);
+  }
   function plannerInput() {
     var o = {};
     Object.keys(PIDS).forEach(function (k) { var v = num($(PIDS[k]).value); o[k] = v >= 0 ? v : 0; });
     state.settings.planner = o; renderPlanner();
-    clearTimeout(plannerTimer);
-    plannerTimer = setTimeout(function () { persist(store.saveSettings(state.settings)); }, 600);
+    queueSettingsSave();
   }
   var FIDS = { mpg: "fu-mpg", dist: "fu-dist", shifts: "fu-shifts", price: "fu-price", step: "fu-step", rows: "fu-rows" };
   var LITRES_PER_GALLON = 4.54609;
@@ -599,8 +626,7 @@ tr.editing td { background: var(--accent-soft); }
     o.shifts = Math.round(o.shifts);
     o.price = Math.round(o.price * 100) / 100;
     state.settings.fuel = o; renderFuel();
-    clearTimeout(fuelTimer);
-    fuelTimer = setTimeout(function () { persist(store.saveSettings(state.settings)); }, 600);
+    queueSettingsSave();
   }
   function stat(k, v) { return '<div class="stat"><div class="k">' + k + '</div><div class="v num">' + v + '</div></div>'; }
 
@@ -646,9 +672,9 @@ tr.editing td { background: var(--accent-soft); }
     if (!list.length) { el.innerHTML = '<div class="empty">Nothing logged for ' + (state.mode === "custom" ? "these dates" : "this period") + ".</div>"; return; }
     var rows = list.slice().reverse().map(function (e) {
       var m = e.mult || 1, pay = e.paid * e.rate * m, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
-      return '<tr class="' + (state.editing === e.date ? "editing" : "") + '"><td>' + DOW[d.getDay()] + " " + nice(e.date, true) + "</td>" +
-        '<td>' + stepper(e, "worked") + '</td><td>' + stepper(e, "paid") + '</td><td class="num">' + money(e.rate) + (m !== 1 ? ' <small style="color:var(--muted)">&times;' + m + ' = ' + money(e.rate * m) + '/h</small>' : '') + '</td>' +
-        '<td class="num">' + money(pay) + '</td><td class="num"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
+      return '<tr class="' + (state.editing === e.date ? "editing" : "") + '"><td class="dt">' + DOW[d.getDay()] + " " + nice(e.date, true) + "</td>" +
+        '<td data-label="Worked">' + stepper(e, "worked") + '</td><td data-label="Paid">' + stepper(e, "paid") + '</td><td class="num" data-label="Rate">' + money(e.rate) + (m !== 1 ? ' <small style="color:var(--muted)">&times;' + m + ' = ' + money(e.rate * m) + '/h</small>' : '') + '</td>' +
+        '<td class="num" data-label="Pay">' + money(pay) + '</td><td class="num" data-label="Real rate"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
         '<td class="act"><button class="quiet" data-copy="' + e.date + '|-1" title="Copy this day to the day before" aria-label="Copy to the day before">&larr; Copy</button><button class="quiet" data-copy="' + e.date + '|1" title="Copy this day to the day after" aria-label="Copy to the day after">Copy &rarr;</button><button class="quiet" data-edit="' + e.date + '">Edit</button><button class="quiet danger" data-del="' + e.date + '">' + (state.confirmDel === e.date ? "Sure?" : "Delete") + '</button></td></tr>';
     }).join("");
     el.innerHTML = '<div class="scroll"><table><thead><tr><th>Date</th><th>Worked</th><th>Paid</th><th>Rate</th><th>Pay</th><th>Real rate</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
@@ -677,6 +703,7 @@ tr.editing td { background: var(--accent-soft); }
     $("d-ot").value = state.settings.overtime;
     $("d-weeks").value = state.settings.weeks;
     $("d-type").value = state.settings.payType;
+    state.formDirty = false; state.confirmReplace = null;
     $("formTitle").textContent = "Log a day";
     $("save").textContent = "Save day";
     $("cancel").hidden = true;
@@ -718,9 +745,16 @@ tr.editing td { background: var(--accent-soft); }
     render();
     var b = document.querySelector('[data-step="' + arg + '"]'); if (b) b.focus();
     clearTimeout(saveTimers[p[0]]);
-    saveTimers[p[0]] = setTimeout(function () { var cur = state.entries[p[0]]; if (cur) persist(store.saveEntry(cur)); }, 500);
+    var d = p[0], tok = (state.dirty[d] || 0) + 1;
+    state.dirty[d] = tok;
+    saveTimers[d] = setTimeout(function () {
+      var cur = state.entries[d];
+      function done() { if (state.dirty[d] === tok) delete state.dirty[d]; }
+      if (!cur) { done(); return; }
+      persist(store.saveEntry(cur).then(done, function (e) { done(); throw e; }));
+    }, 500);
   }
-  var noteTimer;
+  var noteTimer, delTimer;
   function flash(msg) { state.note = msg; renderStatus(); clearTimeout(noteTimer); noteTimer = setTimeout(function () { state.note = ""; renderStatus(); }, 4000); }
   function copyDay(arg) {
     var p = arg.split("|"), src = state.entries[p[0]]; if (!src) return;
@@ -736,20 +770,34 @@ tr.editing td { background: var(--accent-soft); }
     $("modes").addEventListener("click", function (ev) {
       var m = ev.target.getAttribute && ev.target.getAttribute("data-mode"); if (!m) return;
       if (m === "custom" && state.mode !== "custom") { var r = range(); state.from = r[0]; state.to = r[1]; }
-      state.mode = m; render();
+      state.confirmDel = null; state.mode = m; render();
     });
-    $("prev").onclick = function () { shift(-1); render(); };
-    $("next").onclick = function () { shift(1); render(); };
-    $("today").onclick = function () { state.anchor = todayStr(); if (state.mode === "custom") { state.from = state.to = todayStr(); } render(); };
+    $("prev").onclick = function () { state.confirmDel = null; shift(-1); render(); };
+    $("next").onclick = function () { state.confirmDel = null; shift(1); render(); };
+    $("today").onclick = function () { state.confirmDel = null; state.anchor = todayStr(); if (state.mode === "custom") { state.from = state.to = todayStr(); } render(); };
     $("from").onchange = function () { if ($("from").value) { state.from = $("from").value; render(); } };
     $("to").onchange = function () { if ($("to").value) { state.to = $("to").value; render(); } };
     ["f-worked", "f-paid", "f-rate", "f-mult", "f-mult-x"].forEach(function (id) { $(id).addEventListener("input", renderPreview); });
+    ["f-date", "f-worked", "f-paid", "f-rate", "f-mult", "f-mult-x"].forEach(function (id) {
+      $(id).addEventListener("input", function () {
+        state.formDirty = true;
+        if (id === "f-date" && state.confirmReplace) { state.confirmReplace = null; $("save").textContent = state.editing ? "Update day" : "Save day"; }
+      });
+    });
 
     $("form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var date = $("f-date").value, w = num($("f-worked").value), p = num($("f-paid").value), r = num($("f-rate").value);
+      if ($("f-mult").value === "custom" && !(num($("f-mult-x").value) > 0)) { flash("Enter a custom multiplier, or pick Normal or Overtime."); $("f-mult-x").focus(); return; }
       var m = getMult();
       if (!date || !(w >= 0) || !(p >= 0) || !(r >= 0)) return;
+      if (state.entries[date] && state.editing !== date && state.confirmReplace !== date) {
+        var dd = parse(date), lbl = DOW[dd.getDay()] + " " + nice(date, true);
+        state.confirmReplace = date;
+        $("save").textContent = "Replace " + lbl;
+        flash(lbl + " is already logged. Press Replace to overwrite it, or change the date.");
+        return;
+      }
       var wasEditing = state.editing, e = { date: date, worked: w, paid: p, rate: r, mult: m };
       state.entries[date] = e;
       var jobs = [store.saveEntry(e)];
@@ -773,6 +821,7 @@ tr.editing td { background: var(--accent-soft); }
     });
     Object.keys(FIDS).forEach(function (k) { $(FIDS[k]).addEventListener("input", fuelInput); });
     $("fu-price").addEventListener("change", function () { var x = num($("fu-price").value); $("fu-price").value = x >= 0 ? (Math.round(x * 100) / 100).toFixed(2) : "0.00"; });
+    $("fu-step").addEventListener("change", function () { $("fu-step").value = fuel().step; });
     $("fu-shifts").addEventListener("change", function () { var x = num($("fu-shifts").value); $("fu-shifts").value = x >= 0 ? Math.round(x) : 0; });
     $("cancel").onclick = stopEdit;
     $("whatifBtn").onclick = function () {
@@ -790,10 +839,14 @@ tr.editing td { background: var(--accent-soft); }
       else if (ed) { state.confirmDel = null; startEdit(ed); }
       else if (del) {
         if (state.confirmDel === del) {
-          state.confirmDel = null; delete state.entries[del];
+          state.confirmDel = null; delete state.entries[del]; delete state.dirty[del]; clearTimeout(saveTimers[del]);
           if (state.editing === del) { state.editing = null; fillFormDefaults(); }
           render(); persist(store.deleteEntry(del));
-        } else { state.confirmDel = del; renderLog(); }
+        } else {
+          state.confirmDel = del; renderLog();
+          clearTimeout(delTimer);
+          delTimer = setTimeout(function () { if (state.confirmDel === del) { state.confirmDel = null; renderLog(); } }, 4000);
+        }
       }
     });
     function saveDefaults() {
@@ -820,7 +873,26 @@ tr.editing td { background: var(--accent-soft); }
           try { await store.saveEntry(c); } catch (x) {}
         }
       }
-      render(); flash("Restored " + n + " day" + (n === 1 ? "" : "s") + ".");
+      var gotSettings = false;
+      if (o && o.settings && typeof o.settings === "object") {
+        var src = o.settings, cs = {};
+        var nums = function (obj, keys) {
+          if (!obj || typeof obj !== "object") return null;
+          var out = {}; keys.forEach(function (k) { if (typeof obj[k] === "number" && obj[k] >= 0) out[k] = obj[k]; }); return out;
+        };
+        ["rate", "paidHours", "weekHours", "weeks", "overtime"].forEach(function (k) { if (typeof src[k] === "number" && src[k] >= 0) cs[k] = src[k]; });
+        if (["GBP", "USD", "EUR", "CAD", "AUD", "NZD"].indexOf(src.currency) >= 0) cs.currency = src.currency;
+        if (src.payType === "employed" || src.payType === "self") cs.payType = src.payType;
+        var pl = nums(src.planner, Object.keys(PIDS)), fu = nums(src.fuel, Object.keys(FIDS));
+        if (pl) cs.planner = pl;
+        if (fu) cs.fuel = fu;
+        state.settings = Object.assign({}, DEFAULTS, cs);
+        try { await store.saveSettings(state.settings); } catch (x) {}
+        if (!state.editing) fillFormDefaults();
+        fillPlanner(); fillFuel();
+        gotSettings = true;
+      }
+      render(); flash("Restored " + n + " day" + (n === 1 ? "" : "s") + (gotSettings ? " and your settings" : "") + ".");
     };
     fillFormDefaults();
     render();
