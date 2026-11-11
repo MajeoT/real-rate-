@@ -3,7 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<style>:root{color-scheme:light}body{margin:0}</style>
+<meta name="description" content="Log hours worked and paid, and see your real hourly rate, take-home pay and fuel costs.">
+<meta name="theme-color" content="#0b6e66">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Real Rate">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}.install{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);padding:4px 12px;font-size:13px}</style>
 <title>Real Rate</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
@@ -199,7 +208,7 @@ tr.editing td { background: var(--accent-soft); }
   <header>
     <div class="brand">
       <!-- Version: four decimals, start 0.1000, add 0.0001 to the last decimal on every update. -->
-      <h1>Real Rate <span class="ver num" title="Version">0.1006</span></h1>
+      <h1>Real Rate <span class="ver num" title="Version">0.1007</span></h1>
       <div class="by">Made by <a href="https://twitter.com/ToejahMM" target="_blank" rel="noopener noreferrer">@ToejahMM</a></div>
     </div>
     <span class="status" id="status" role="status">Loading…</span>
@@ -946,6 +955,18 @@ tr.editing td { background: var(--accent-soft); }
       }
     } catch (e) { /* stay on local storage */ }
   })();
+})();
+</script>
+<script>
+// Phone app: offline worker, and an Install button where the browser supports one (Android Chrome, Edge).
+(function () {
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
+  var prompt = null, btn = document.createElement("button");
+  btn.type = "button"; btn.className = "install"; btn.textContent = "Install app"; btn.hidden = true;
+  var header = document.querySelector("header"); if (header) header.appendChild(btn);
+  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); prompt = e; btn.hidden = false; });
+  btn.addEventListener("click", function () { if (!prompt) return; prompt.prompt(); prompt.userChoice.finally(function () { prompt = null; btn.hidden = true; }); });
+  window.addEventListener("appinstalled", function () { btn.hidden = true; });
 })();
 </script>
 </body>
