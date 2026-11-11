@@ -58,6 +58,7 @@ h2 { font-size: 12px; margin: 0 0 12px; font-weight: 600; text-transform: upperc
 .picker { display: flex; flex-direction: column; gap: 12px; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; }
 .seg button { flex: 1 1 auto; }
+.taxseg { max-width: 320px; }
 button, input, select { font: inherit; color: inherit; }
 button {
   background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 7px 12px; cursor: pointer;
@@ -198,7 +199,7 @@ tr.editing td { background: var(--accent-soft); }
   <header>
     <div class="brand">
       <!-- Version: four decimals, start 0.1000, add 0.0001 to the last decimal on every update. -->
-      <h1>Real Rate <span class="ver num" title="Version">0.1005</span></h1>
+      <h1>Real Rate <span class="ver num" title="Version">0.1006</span></h1>
       <div class="by">Made by <a href="https://twitter.com/ToejahMM" target="_blank" rel="noopener noreferrer">@ToejahMM</a></div>
     </div>
     <span class="status" id="status" role="status">Loading…</span>
@@ -217,6 +218,7 @@ tr.editing td { background: var(--accent-soft); }
       <button id="next" aria-label="Next period">&rarr;</button>
       <button id="today" class="quiet">Today</button>
     </div>
+    <div class="seg taxseg" id="taxmode" role="group" aria-label="Before or after tax"></div>
   </section>
 
   <section class="panel" id="summary" aria-live="polite"></section>
@@ -324,7 +326,7 @@ tr.editing td { background: var(--accent-soft); }
 <script>
 (function () {
   "use strict";
-  var DEFAULTS = { rate: 25, paidHours: 12, currency: "GBP", days: 5, weekHours: 48, weeks: 52, payType: "employed", overtime: 1.5 };
+  var DEFAULTS = { rate: 25, paidHours: 12, currency: "GBP", days: 5, weekHours: 48, weeks: 52, payType: "employed", overtime: 1.5, afterTax: false };
   var state = {
     entries: {},            // date -> {date, worked, paid, rate}
     settings: Object.assign({}, DEFAULTS),
@@ -466,6 +468,12 @@ tr.editing td { background: var(--accent-soft); }
     $("plabel").hidden = custom;
     $("plabel").textContent = periodLabel();
     if (custom) { $("from").value = state.from; $("to").value = state.to; }
+    var tm = $("taxmode"), at = !!state.settings.afterTax;
+    tm.hidden = state.settings.currency !== "GBP";
+    tm.innerHTML = [["0", "Before tax"], ["1", "After tax"]].map(function (o) {
+      var on = (o[0] === "1") === at;
+      return '<button type="button" data-tax="' + o[0] + '" class="' + (on ? "on" : "") + '" aria-pressed="' + on + '">' + o[1] + '</button>';
+    }).join("");
   }
 
   function renderSummary() {
@@ -476,11 +484,11 @@ tr.editing td { background: var(--accent-soft); }
         '<div class="ex">Example: paid for 12 hours at ' + money(25) + ' = ' + money(300) + '. You only worked 10, so your real rate is <b class="num">' + money(30) + '/h</b>.</div></div>';
       return;
     }
-    var real = t.real, diff = real == null ? 0 : real - t.nominal;
+    var k = keepFactor(t.baseNominal), after = isAfter(), real = t.real == null ? null : t.real * k, nominalK = t.nominal * k, diff = real == null ? 0 : real - nominalK;
     var deltaCls = diff > 0.005 ? "pos" : diff < -0.005 ? "neg" : "";
     var deltaTxt = real == null ? "" :
-      (diff > 0.005 ? "+" + money(diff) + "/h above your paid rate of " + money(t.nominal) :
-       diff < -0.005 ? "−" + money(-diff) + "/h below your paid rate of " + money(t.nominal) :
+      (diff > 0.005 ? "+" + money(diff) + "/h above your paid rate of " + money(nominalK) :
+       diff < -0.005 ? "−" + money(-diff) + "/h below your paid rate of " + money(nominalK) :
        "Same as your paid rate");
     var gapLabel = t.gap >= 0 ? "Paid but not worked" : "Worked but not paid";
     var explain = "";
@@ -492,15 +500,16 @@ tr.editing td { background: var(--accent-soft); }
     el.innerHTML =
       (state.whatIf != null ? '<div><span class="delta" style="margin:0 0 12px">What if: paid ' + money(state.whatIf) + '/h base rate. Not saved.</span></div>' : '') +
       '<div class="hero"><div>' +
-        '<h2>Real hourly rate</h2>' +
+        '<h2>Real hourly rate' + (after ? ' after tax' : '') + '</h2>' +
         '<div class="big num">' + (real == null ? "—" : money(real)) + '<small> /h</small></div>' +
         (real == null ? '<div class="cap">No hours worked in this period.</div>' : '<span class="delta ' + deltaCls + '">' + deltaTxt + '</span>') +
       '</div>' +
       '<div class="stats">' +
-        stat("Total pay", money(t.pay)) + stat("Days logged", t.n) +
+        stat(after ? "Take-home pay" : "Total pay", money(t.pay * k)) + stat("Days logged", t.n) +
         stat("Hours worked", hrs(t.worked)) + stat("Hours paid", hrs(t.paid)) +
         '<div class="stat" style="grid-column:1/-1;padding-left:0;border-left:0"><div class="k">' + gapLabel + '</div><div class="v num ' + (t.gap > 0 ? "pos" : t.gap < 0 ? "neg" : "") + '">' + hrs(Math.abs(t.gap)) + ' h</div></div>' +
-      '</div></div>' + (explain ? '<div class="explain">' + explain + '</div>' : "") + taxBlock(t);
+      '</div></div>' + (explain ? '<div class="explain">' + explain + '</div>' : "") +
+      (after ? '<div class="explain">Showing pay after estimated income tax and National Insurance: about <b>' + (Math.round((1 - k) * 1000) / 10) + '%</b> taken off, based on ' + hrs(state.settings.weekHours) + ' h paid a week at ' + money(t.baseNominal) + '/h. The full breakdown is below.</div>' : "") + taxBlock(t);
   }
   function ukTax(inc, selfEmp) {
     var pa = Math.max(0, 12570 - Math.max(0, (inc - 100000) / 2));
@@ -509,6 +518,14 @@ tr.editing td { background: var(--accent-soft); }
     if (taxable > 125140) tax += (taxable - 125140) * 0.45;
     var ni = Math.max(0, Math.min(inc, 50270) - 12570) * (selfEmp ? 0.06 : 0.08) + Math.max(0, inc - 50270) * 0.02;
     return { tax: tax, ni: ni };
+  }
+  function isAfter() { return !!state.settings.afterTax && state.settings.currency === "GBP"; }
+  // Share of pay you keep after estimated income tax and NI, for a typical week at this base rate.
+  function keepFactor(baseRate) {
+    var s = state.settings;
+    if (!isAfter() || !(baseRate > 0)) return 1;
+    var annual = s.weekHours * baseRate * s.weeks, r = ukTax(annual, s.payType === "self");
+    return annual > 0 ? (annual - r.tax - r.ni) / annual : 1;
   }
   function taxBlock(t) {
     var s = state.settings;
@@ -632,7 +649,7 @@ tr.editing td { background: var(--accent-soft); }
 
   function renderChart() {
     var r = range(), list = inRange(r), body = $("chartBody"), groups = [], monthly = dayDiff(r[0], r[1]) > 62;
-    $("chartTitle").textContent = monthly ? "Real rate by month" : "Real rate by day";
+    $("chartTitle").textContent = (monthly ? "Real rate by month" : "Real rate by day") + (isAfter() ? " (after tax)" : "");
     if (!list.length) { body.innerHTML = '<div class="empty">The chart appears once you have logged days.</div>'; return; }
     var map = {}, order = [];
     list.forEach(function (e) {
@@ -647,16 +664,16 @@ tr.editing td { background: var(--accent-soft); }
     var max = 0;
     groups.forEach(function (g) { if (g.t.real != null) max = Math.max(max, g.t.real, g.t.nominal); });
     if (max <= 0) { body.innerHTML = '<div class="empty">No hours worked yet, so there is no rate to chart.</div>'; return; }
-    var H = 118, total = sum(list), nomY = total.nominal != null ? Math.round(total.nominal / max * H) : null;
+    var H = 118, total = sum(list), k = keepFactor(total.baseNominal), nomY = total.nominal != null ? Math.round(total.nominal / max * H) : null;
     var cols = groups.map(function (g) {
       var h = g.t.real == null ? 0 : Math.max(2, Math.round(g.t.real / max * H));
       var below = g.t.real != null && g.t.real < g.t.nominal - 0.005;
-      var tip = g.t.real == null ? "No hours worked" : money(g.t.real) + "/h real, " + money(g.t.nominal) + "/h paid";
+      var tip = g.t.real == null ? "No hours worked" : money(g.t.real * k) + "/h real, " + money(g.t.nominal * k) + "/h paid";
       return '<div class="col' + (below ? " below" : "") + '" title="' + esc(tip) + '"><div class="bar" style="height:' + h + 'px"></div><div class="tick">' + g.tick + '</div></div>';
     }).join("");
     body.innerHTML = '<div class="chartbox"><div class="chart">' + cols + '</div>' +
       (nomY != null ? '<div class="nomline" style="bottom:' + (nomY + 22) + 'px"></div>' : "") + '</div>' +
-      '<div class="legend"><span><i></i>Real rate</span><span><i class="l"></i>Below paid rate</span><span><i class="n"></i>Paid rate (' + money(total.nominal || 0) + ')</span><span class="num">Top of chart ' + money(max) + '</span></div>';
+      '<div class="legend"><span><i></i>Real rate</span><span><i class="l"></i>Below paid rate</span><span><i class="n"></i>Paid rate (' + money((total.nominal || 0) * k) + ')</span><span class="num">Top of chart ' + money(max * k) + '</span></div>';
   }
 
   function stepper(e, f) {
@@ -666,18 +683,18 @@ tr.editing td { background: var(--accent-soft); }
       '<button type="button" class="quiet" data-step="' + d + '|' + f + '|-1" aria-label="Decrease ' + what + ' for ' + d + '">&#9660;</button></span></span>';
   }
   function renderLog() {
-    var r = range(), list = inRange(r), el = $("log");
+    var r = range(), list = inRange(r), el = $("log"), k = keepFactor(sum(list).baseNominal), after = isAfter();
     $("logTitle").textContent = "Days in this period";
     $("whatifBtn").textContent = $("whatif").hidden ? "What if I was paid a different rate?" : "Close what-if";
     if (!list.length) { el.innerHTML = '<div class="empty">Nothing logged for ' + (state.mode === "custom" ? "these dates" : "this period") + ".</div>"; return; }
     var rows = list.slice().reverse().map(function (e) {
-      var m = e.mult || 1, pay = e.paid * e.rate * m, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
+      var m = e.mult || 1, pay = e.paid * e.rate * m * k, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
       return '<tr class="' + (state.editing === e.date ? "editing" : "") + '"><td class="dt">' + DOW[d.getDay()] + " " + nice(e.date, true) + "</td>" +
         '<td data-label="Worked">' + stepper(e, "worked") + '</td><td data-label="Paid">' + stepper(e, "paid") + '</td><td class="num" data-label="Rate">' + money(e.rate) + (m !== 1 ? ' <small style="color:var(--muted)">&times;' + m + ' = ' + money(e.rate * m) + '/h</small>' : '') + '</td>' +
-        '<td class="num" data-label="Pay">' + money(pay) + '</td><td class="num" data-label="Real rate"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
+        '<td class="num" data-label="' + (after ? "Take-home" : "Pay") + '">' + money(pay) + '</td><td class="num" data-label="' + (after ? "Real rate after tax" : "Real rate") + '"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
         '<td class="act"><button class="quiet" data-copy="' + e.date + '|-1" title="Copy this day to the day before" aria-label="Copy to the day before">&larr; Copy</button><button class="quiet" data-copy="' + e.date + '|1" title="Copy this day to the day after" aria-label="Copy to the day after">Copy &rarr;</button><button class="quiet" data-edit="' + e.date + '">Edit</button><button class="quiet danger" data-del="' + e.date + '">' + (state.confirmDel === e.date ? "Sure?" : "Delete") + '</button></td></tr>';
     }).join("");
-    el.innerHTML = '<div class="scroll"><table><thead><tr><th>Date</th><th>Worked</th><th>Paid</th><th>Rate</th><th>Pay</th><th>Real rate</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    el.innerHTML = '<div class="scroll"><table><thead><tr><th>Date</th><th>Worked</th><th>Paid</th><th>Rate</th><th>' + (after ? "Take-home" : "Pay") + '</th><th>' + (after ? "Real rate after tax" : "Real rate") + '</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   function renderStatus() {
@@ -710,7 +727,7 @@ tr.editing td { background: var(--accent-soft); }
   }
   function renderPreview() {
     var w = num($("f-worked").value), p = num($("f-paid").value), r = num($("f-rate").value), m = getMult();
-    $("preview").textContent = (w > 0 && p >= 0 && r >= 0) ? "This day: " + (m !== 1 ? "overtime rate " + money(r * m) + "/h, " : "") + money(p * r * m) + " earned, " + money(p * r * m / w) + "/h real" : "";
+    $("preview").textContent = (w > 0 && p >= 0 && r >= 0) ? "This day: " + (m !== 1 ? "overtime rate " + money(r * m) + "/h, " : "") + money(p * r * m * keepFactor(r)) + (isAfter() ? " take-home, " : " earned, ") + money(p * r * m * keepFactor(r) / w) + "/h real" : "";
   }
   function startEdit(date) {
     var e = state.entries[date]; if (!e) return;
@@ -823,6 +840,10 @@ tr.editing td { background: var(--accent-soft); }
     $("fu-price").addEventListener("change", function () { var x = num($("fu-price").value); $("fu-price").value = x >= 0 ? (Math.round(x * 100) / 100).toFixed(2) : "0.00"; });
     $("fu-step").addEventListener("change", function () { $("fu-step").value = fuel().step; });
     $("fu-shifts").addEventListener("change", function () { var x = num($("fu-shifts").value); $("fu-shifts").value = x >= 0 ? Math.round(x) : 0; });
+    $("taxmode").addEventListener("click", function (ev) {
+      var v = ev.target.getAttribute && ev.target.getAttribute("data-tax"); if (v == null) return;
+      state.settings.afterTax = v === "1"; render(); queueSettingsSave();
+    });
     $("cancel").onclick = stopEdit;
     $("whatifBtn").onclick = function () {
       var opening = $("whatif").hidden;
@@ -853,7 +874,7 @@ tr.editing td { background: var(--accent-soft); }
       var r = num($("d-rate").value), p = num($("d-paid").value);
       var dy = num($("d-hpw").value), wk = num($("d-weeks").value), ot = num($("d-ot").value), oldOt = state.settings.overtime, curM = getMult();
       state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value,
-        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime, planner: state.settings.planner || null, fuel: state.settings.fuel || null };
+        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime, planner: state.settings.planner || null, fuel: state.settings.fuel || null, afterTax: !!state.settings.afterTax };
       if (!state.editing) fillMult(curM === oldOt && oldOt !== 1 ? state.settings.overtime : curM);
       render(); persist(store.saveSettings(state.settings));
     }
@@ -883,6 +904,7 @@ tr.editing td { background: var(--accent-soft); }
         ["rate", "paidHours", "weekHours", "weeks", "overtime"].forEach(function (k) { if (typeof src[k] === "number" && src[k] >= 0) cs[k] = src[k]; });
         if (["GBP", "USD", "EUR", "CAD", "AUD", "NZD"].indexOf(src.currency) >= 0) cs.currency = src.currency;
         if (src.payType === "employed" || src.payType === "self") cs.payType = src.payType;
+        if (typeof src.afterTax === "boolean") cs.afterTax = src.afterTax;
         var pl = nums(src.planner, Object.keys(PIDS)), fu = nums(src.fuel, Object.keys(FIDS));
         if (pl) cs.planner = pl;
         if (fu) cs.fuel = fu;
