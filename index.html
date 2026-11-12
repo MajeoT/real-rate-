@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Real Rate">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}.install{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);padding:4px 12px;font-size:13px}</style>
+<style>[hidden]{display:none!important}img{max-width:100%}:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}.install{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);padding:4px 12px;font-size:13px}</style>
 <title>Real Rate</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
@@ -171,12 +171,30 @@ tr.editing td { background: var(--accent-soft); }
 .fuel .explain { margin-top: 12px; }
 .fuel .sep { border-left: 1px solid var(--line); }
 .fuel .fine { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; display: flex; gap: 4px; padding: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 2px 10px rgb(0 0 0 / 0.07); }
+.tabs button { flex: 1 1 0; min-width: 0; border: 0; background: transparent; padding: 9px 4px; font-weight: 500; color: var(--muted); border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tabs button:hover { color: var(--fg); }
+.tabs button.on { background: var(--accent); color: var(--accent-fg); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.tabpanel { display: flex; flex-direction: column; gap: 16px; }
+.qgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0 16px; align-items: end; }
+.qhead { display: flex; gap: 12px 28px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+.qhead .big small { font-size: 0.32em; }
+.quick table { min-width: 560px; }
+.quick .sep { border-left: 1px solid var(--line); }
+.quick .realc { color: var(--accent); font-weight: 500; }
+.quick tr.total td { font-weight: 600; border-bottom: 0; }
+.quick .explain { margin-top: 12px; }
+.quick .fine { margin-top: 10px; font-size: 12px; color: var(--muted); }
 .stepper { display: inline-flex; align-items: center; gap: 4px; }
 .stepper .arrows { display: inline-flex; flex-direction: column; }
 .stepper .arrows button { padding: 0 5px; font-size: 9px; line-height: 13px; border-radius: 3px; color: var(--muted); }
 .stepper .arrows button:hover { color: var(--accent); }
 @media (max-width: 640px) {
   .fgrid { grid-template-columns: 1fr 1fr; }
+  .qgrid { grid-template-columns: 1fr 1fr; }
+  .tabs { gap: 2px; padding: 4px; }
+  .tabs button { font-size: 13px; padding: 9px 2px; }
   .pgrid { grid-template-columns: 1fr; }
   .hero { grid-template-columns: 1fr; }
   .form { grid-template-columns: 1fr 1fr; }
@@ -208,12 +226,20 @@ tr.editing td { background: var(--accent-soft); }
   <header>
     <div class="brand">
       <!-- Version: four decimals, start 0.1000, add 0.0001 to the last decimal on every update. -->
-      <h1>Real Rate <span class="ver num" title="Version">0.1007</span></h1>
+      <h1>Real Rate <span class="ver num" title="Version">0.1008</span></h1>
       <div class="by">Made by <a href="https://twitter.com/ToejahMM" target="_blank" rel="noopener noreferrer">@ToejahMM</a></div>
     </div>
     <span class="status" id="status" role="status">Loading…</span>
   </header>
 
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button type="button" role="tab" id="tb-log" data-tabbtn="log" aria-controls="tab-log">Log days</button>
+    <button type="button" role="tab" id="tb-week" data-tabbtn="week" aria-controls="tab-week">Quick week</button>
+    <button type="button" role="tab" id="tb-planner" data-tabbtn="planner" aria-controls="tab-planner">Planner</button>
+    <button type="button" role="tab" id="tb-fuel" data-tabbtn="fuel" aria-controls="tab-fuel">Fuel</button>
+  </nav>
+
+  <div class="tabpanel" id="tab-log" role="tabpanel" aria-labelledby="tb-log">
   <section class="panel picker" aria-label="Time period">
     <div class="seg" id="modes"></div>
     <div class="nav">
@@ -288,6 +314,27 @@ tr.editing td { background: var(--accent-soft); }
     </details>
   </section>
 
+  </div>
+
+  <div class="tabpanel" id="tab-week" role="tabpanel" aria-labelledby="tb-week" hidden>
+  <section class="panel quick" id="quick" aria-label="Quick week">
+    <h2>Quick week</h2>
+    <p class="explain" style="margin:0">Work out a week without logging each day. Enter how many shifts, the hours paid and worked, and your rate.</p>
+    <div class="qgrid">
+      <label for="q-shifts">Shifts<input id="q-shifts" type="number" step="1" min="0" max="14" inputmode="numeric"></label>
+      <label for="q-mode">Hours are
+        <select id="q-mode"><option value="shift">Per shift</option><option value="total">For the whole week</option></select>
+      </label>
+      <label for="q-rate">Hourly rate<input id="q-rate" type="number" step="0.01" min="0" inputmode="decimal"></label>
+      <label for="q-paid"><span id="q-paid-t">Hours paid per shift</span><input id="q-paid" type="number" step="0.25" min="0" inputmode="decimal"></label>
+      <label for="q-worked"><span id="q-worked-t">Hours worked per shift</span><input id="q-worked" type="number" step="0.25" min="0" inputmode="decimal"></label>
+      <label for="q-mult">Pay multiplier<input id="q-mult" type="number" step="0.05" min="0.1" max="10" inputmode="decimal"></label>
+    </div>
+    <div id="quickOut" aria-live="polite"></div>
+  </section>
+  </div>
+
+  <div class="tabpanel" id="tab-planner" role="tabpanel" aria-labelledby="tb-planner" hidden>
   <section class="panel plan" id="planner" aria-label="Monthly wage planner">
     <h2>Monthly wage planner</h2>
     <p class="explain" style="margin:0">Plan a typical month on its own, separate from the days you log. Enter your usual week, then any overtime and how many times you do it in a month.</p>
@@ -309,6 +356,9 @@ tr.editing td { background: var(--accent-soft); }
     <div id="plannerOut" aria-live="polite"></div>
   </section>
 
+  </div>
+
+  <div class="tabpanel" id="tab-fuel" role="tabpanel" aria-labelledby="tb-fuel" hidden>
   <section class="panel fuel" id="fuel" aria-label="Fuel cost">
     <h2>Fuel cost</h2>
     <p class="explain" style="margin:0">Work out what fuel costs per shift, per week and per month from your miles per gallon. Gallons are UK (imperial) gallons.</p>
@@ -330,6 +380,7 @@ tr.editing td { background: var(--accent-soft); }
       <div id="fuelSteps" aria-live="polite"></div>
     </div>
   </section>
+  </div>
 </div>
 
 <script>
@@ -456,7 +507,7 @@ tr.editing td { background: var(--accent-soft); }
     var first = !state.loaded;
     state.loaded = true;
     if (!state.editing && (first || !state.formDirty)) fillFormDefaults();
-    fillPlanner(); fillFuel();
+    fillPlanner(); fillFuel(); fillQuick();
     render();
   }
   function persist(p) {
@@ -560,7 +611,7 @@ tr.editing td { background: var(--accent-soft); }
       row(selfEmp ? "Left after tax and NI" : "Take-home", net, "total") +
       '</tbody></table></div>' +
       '<div class="explain">In a typical week you are paid for <b>' + hrs(s.weekHours) + ' h</b> and work <b>' + hrs(workedWeek) + ' h</b>. The pay is the same either way. <b>Paid hour</b> divides it by the hours you are paid for. <b>Real hour</b> divides it by the hours you actually work.</div>' +
-      '<div class="fine">Week = ' + hrs(s.weekHours) + ' h paid \u00d7 your average base rate of ' + money(t.baseNominal) + '/h = ' + money(weekly) + '. Overtime multipliers are left out of this projection, so use the monthly wage planner below for overtime. Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + '. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change hours and weeks under Defaults for new days.</div></div>';
+      '<div class="fine">Week = ' + hrs(s.weekHours) + ' h paid \u00d7 your average base rate of ' + money(t.baseNominal) + '/h = ' + money(weekly) + '. Overtime multipliers are left out of this projection, so use the Planner tab for overtime. Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + '. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change hours and weeks under Defaults for new days.</div></div>';
   }
   var PIDS = { paidWeek: "p-paid", workedWeek: "p-worked", rate: "p-rate", otPaid: "p-otpaid", otWorked: "p-otworked", otMult: "p-otmult", otTimes: "p-ottimes" };
   function planner() {
@@ -654,6 +705,66 @@ tr.editing td { background: var(--accent-soft); }
     state.settings.fuel = o; renderFuel();
     queueSettingsSave();
   }
+  var QIDS = { shifts: "q-shifts", paid: "q-paid", worked: "q-worked", rate: "q-rate", mult: "q-mult" };
+  function quick() {
+    var q = Object.assign({ shifts: 4, mode: "shift", paid: 12, worked: 10, rate: state.settings.rate, mult: 1 }, state.settings.quick || {});
+    q.shifts = Math.round(q.shifts); if (!(q.mult > 0)) q.mult = 1; if (q.mode !== "total") q.mode = "shift";
+    return q;
+  }
+  function fillQuick() {
+    var a = document.activeElement; if (a && a.id && a.id.indexOf("q-") === 0) return;
+    var q = quick(); Object.keys(QIDS).forEach(function (k) { $(QIDS[k]).value = q[k]; }); $("q-mode").value = q.mode;
+  }
+  function renderQuick() {
+    var q = quick(), s = state.settings, per = q.mode === "shift", gbp = s.currency === "GBP";
+    $("q-paid-t").textContent = per ? "Hours paid per shift" : "Hours paid this week";
+    $("q-worked-t").textContent = per ? "Hours worked per shift" : "Hours worked this week";
+    var paidW = per ? q.paid * q.shifts : q.paid, workedW = per ? q.worked * q.shifts : q.worked;
+    var pay = paidW * q.rate * q.mult, real = workedW > 0 ? pay / workedW : null, paidRate = paidW > 0 ? pay / paidW : null;
+    if (!(paidW > 0)) { $("quickOut").innerHTML = '<div class="empty">Enter the shifts and hours paid to see your week.</div>'; return; }
+    // Tax as if every working week were like this one; month and year use your weeks-per-year setting.
+    var r = gbp ? ukTax(pay * s.weeks, s.payType === "self") : { tax: 0, ni: 0 };
+    var tax = r.tax / s.weeks, ni = r.ni / s.weeks, net = pay - tax - ni, keep = pay > 0 ? net / pay : 1;
+    function h(v, hours) { return hours > 0 ? money(v / hours) : "\u2014"; }
+    function row(label, v, cls) {
+      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="num">' + h(v, paidW) + '</td><td class="num realc">' + h(v, workedW) + '</td>' +
+        '<td class="num sep">' + money(v) + '</td><td class="num">' + money(v * s.weeks / 12) + '</td><td class="num">' + money(v * s.weeks) + '</td></tr>';
+    }
+    var diff = real == null ? 0 : real - paidRate;
+    var gap = paidW - workedW;
+    $("quickOut").innerHTML =
+      '<div class="qhead"><div><h2 style="margin-bottom:4px">Real hourly rate</h2><div class="big num">' + (real == null ? "\u2014" : money(real)) + '<small> /h</small></div>' +
+        (real == null ? '<div class="cap">Enter hours worked to see your real rate.</div>' : '<span class="delta ' + (diff > 0.005 ? "pos" : diff < -0.005 ? "neg" : "") + '">' +
+          (diff > 0.005 ? "+" + money(diff) + "/h above" : diff < -0.005 ? "\u2212" + money(-diff) + "/h below" : "Same as") + " your paid rate of " + money(paidRate) + '</span>') + '</div>' +
+        (gbp && real != null ? '<div><h2 style="margin-bottom:4px">After tax</h2><div class="big num" style="font-size:clamp(28px,6vw,40px)">' + money(real * keep) + '<small> /h real</small></div></div>' : '') +
+      '</div>' +
+      '<div class="scroll"><table><thead><tr><th></th><th>Paid hour</th><th>Real hour</th><th class="sep">Week</th><th>Month</th><th>Year</th></tr></thead><tbody>' +
+      row("Pay before tax", pay, gbp ? "" : "total") +
+      (gbp ? row("Income tax", -tax) + row(s.payType === "self" ? "Class 4 National Insurance" : "National Insurance", -ni) + row(s.payType === "self" ? "Left after tax and NI" : "Take-home", net, "total") : "") +
+      '</tbody></table></div>' +
+      '<div class="explain">' + (q.shifts > 0 ? q.shifts + ' shift' + (q.shifts === 1 ? '' : 's') + ': ' : '') + '<b>' + hrs(paidW) + ' h</b> paid, <b>' + hrs(workedW) + ' h</b> worked' +
+        (Math.abs(gap) > 0.001 ? ' (' + hrs(Math.abs(gap)) + ' h ' + (gap > 0 ? 'paid but not worked' : 'worked but not paid') + ')' : '') + '.' +
+        (q.shifts > 0 ? ' Each shift pays <b>' + money(pay / q.shifts) + '</b>' + (gbp ? ', about <b>' + money(net / q.shifts) + '</b> after tax' : '') + '.' : '') +
+        (q.mult !== 1 ? ' Rate \u00d7 ' + hrs(q.mult) + ' = ' + money(q.rate * q.mult) + '/h.' : '') + '</div>' +
+      '<div class="fine">Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + ' (your weeks per year, set under Defaults on the Log days tab).' + (gbp ? ' Tax assumes every working week is like this one, using 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no pension or student loan.' : ' Tax is only estimated for GBP.') + ' Not added to your logged days.</div>';
+  }
+  function quickInput() {
+    var o = { mode: $("q-mode").value === "total" ? "total" : "shift" };
+    Object.keys(QIDS).forEach(function (k) { var x = num($(QIDS[k]).value); o[k] = x >= 0 ? x : 0; });
+    o.shifts = Math.round(o.shifts);
+    state.settings.quick = o; renderQuick();
+    queueSettingsSave();
+  }
+  var TABS = ["log", "week", "planner", "fuel"];
+  function showTab(name, scroll) {
+    if (TABS.indexOf(name) < 0) name = "log";
+    TABS.forEach(function (t) {
+      var on = t === name, b = document.querySelector('[data-tabbtn="' + t + '"]');
+      $("tab-" + t).hidden = !on; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
+    });
+    try { localStorage.setItem("realrate:tab", name); } catch (e) {}
+    if (scroll) window.scrollTo(0, 0);
+  }
   function stat(k, v) { return '<div class="stat"><div class="k">' + k + '</div><div class="v num">' + v + '</div></div>'; }
 
   function renderChart() {
@@ -713,7 +824,7 @@ tr.editing td { background: var(--accent-soft); }
     else if (!state.loaded) s.textContent = "Loading…";
     else s.textContent = state.storage === "local" ? "Saved in this browser only" : "Saved to your account";
   }
-  function render() { renderPicker(); renderSummary(); renderChart(); renderLog(); renderStatus(); renderPreview(); renderPlanner(); renderFuel(); }
+  function render() { renderPicker(); renderSummary(); renderChart(); renderLog(); renderStatus(); renderPreview(); renderPlanner(); renderFuel(); renderQuick(); }
 
   /* ---------- form ---------- */
   function fillFormDefaults() {
@@ -853,6 +964,25 @@ tr.editing td { background: var(--accent-soft); }
       var v = ev.target.getAttribute && ev.target.getAttribute("data-tax"); if (v == null) return;
       state.settings.afterTax = v === "1"; render(); queueSettingsSave();
     });
+    Object.keys(QIDS).forEach(function (k) { $(QIDS[k]).addEventListener("input", quickInput); });
+    $("q-mode").addEventListener("change", quickInput);
+    $("q-shifts").addEventListener("change", function () { var x = num($("q-shifts").value); $("q-shifts").value = x >= 0 ? Math.round(x) : 0; });
+    document.querySelector(".tabs").addEventListener("click", function (ev) {
+      var t = ev.target.closest && ev.target.closest("[data-tabbtn]"); if (!t) return;
+      var name = t.getAttribute("data-tabbtn");
+      showTab(name, true);
+      if (location.hash !== "#" + name) location.hash = name;
+    });
+    document.querySelector(".tabs").addEventListener("keydown", function (ev) {
+      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+      var cur = TABS.indexOf(document.activeElement.getAttribute("data-tabbtn")); if (cur < 0) return;
+      var next = TABS[(cur + (ev.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
+      showTab(next, false); location.hash = next; document.querySelector('[data-tabbtn="' + next + '"]').focus();
+    });
+    window.addEventListener("hashchange", function () { showTab(location.hash.slice(1), true); });
+    var startTab = location.hash.slice(1);
+    if (TABS.indexOf(startTab) < 0) { try { startTab = localStorage.getItem("realrate:tab") || "log"; } catch (e) { startTab = "log"; } }
+    showTab(startTab, false);
     $("cancel").onclick = stopEdit;
     $("whatifBtn").onclick = function () {
       var opening = $("whatif").hidden;
@@ -883,7 +1013,7 @@ tr.editing td { background: var(--accent-soft); }
       var r = num($("d-rate").value), p = num($("d-paid").value);
       var dy = num($("d-hpw").value), wk = num($("d-weeks").value), ot = num($("d-ot").value), oldOt = state.settings.overtime, curM = getMult();
       state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value,
-        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime, planner: state.settings.planner || null, fuel: state.settings.fuel || null, afterTax: !!state.settings.afterTax };
+        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime, planner: state.settings.planner || null, fuel: state.settings.fuel || null, afterTax: !!state.settings.afterTax, quick: state.settings.quick || null };
       if (!state.editing) fillMult(curM === oldOt && oldOt !== 1 ? state.settings.overtime : curM);
       render(); persist(store.saveSettings(state.settings));
     }
@@ -917,10 +1047,12 @@ tr.editing td { background: var(--accent-soft); }
         var pl = nums(src.planner, Object.keys(PIDS)), fu = nums(src.fuel, Object.keys(FIDS));
         if (pl) cs.planner = pl;
         if (fu) cs.fuel = fu;
+        var qk = nums(src.quick, Object.keys(QIDS));
+        if (qk) { qk.mode = src.quick.mode === "total" ? "total" : "shift"; cs.quick = qk; }
         state.settings = Object.assign({}, DEFAULTS, cs);
         try { await store.saveSettings(state.settings); } catch (x) {}
         if (!state.editing) fillFormDefaults();
-        fillPlanner(); fillFuel();
+        fillPlanner(); fillFuel(); fillQuick();
         gotSettings = true;
       }
       render(); flash("Restored " + n + " day" + (n === 1 ? "" : "s") + (gotSettings ? " and your settings" : "") + ".");

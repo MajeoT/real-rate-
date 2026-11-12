@@ -21,7 +21,7 @@ head = '''<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Real Rate">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}.install{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);padding:4px 12px;font-size:13px}</style>
+<style>[hidden]{display:none!important}img{max-width:100%}:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}.install{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);padding:4px 12px;font-size:13px}</style>
 '''
 
 app_bits = '''<script>
