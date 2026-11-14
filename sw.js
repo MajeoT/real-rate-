@@ -1,6 +1,6 @@
 // Real Rate offline worker. Pages come from the network first so updates show straight away;
 // the saved copy is used when there is no signal. Bump CACHE with each app version.
-const CACHE = "real-rate-0.1008";
+const CACHE = "real-rate-0.1010";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {

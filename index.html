@@ -166,7 +166,7 @@ tr.editing td { background: var(--accent-soft); }
 .fuel table { min-width: 480px; }
 .fuel .fsteps { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 14px; }
 .fuel h3 { margin: 0 0 10px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-.fuel #fuelSteps { margin-top: 12px; }
+.fuel #fuelSteps, .fuel #fuelPrices { margin-top: 12px; }
 .fuel tr.cur td { background: var(--accent-soft); font-weight: 600; }
 .fuel .explain { margin-top: 12px; }
 .fuel .sep { border-left: 1px solid var(--line); }
@@ -226,7 +226,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   <header>
     <div class="brand">
       <!-- Version: four decimals, start 0.1000, add 0.0001 to the last decimal on every update. -->
-      <h1>Real Rate <span class="ver num" title="Version">0.1008</span></h1>
+      <h1>Real Rate <span class="ver num" title="Version">0.1010</span></h1>
       <div class="by">Made by <a href="https://twitter.com/ToejahMM" target="_blank" rel="noopener noreferrer">@ToejahMM</a></div>
     </div>
     <span class="status" id="status" role="status">Loading…</span>
@@ -366,7 +366,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       <label for="fu-mpg">Miles per gallon<input id="fu-mpg" type="number" step="0.1" min="0" inputmode="decimal"></label>
       <label for="fu-dist">Miles per shift<input id="fu-dist" type="number" step="0.1" min="0" inputmode="decimal"></label>
       <label for="fu-shifts">Shifts per week<input id="fu-shifts" type="number" step="1" min="0" max="14" inputmode="numeric"></label>
-      <label for="fu-price">Fuel price per litre<input id="fu-price" type="number" step="0.01" min="0" inputmode="decimal"></label>
+      <label for="fu-price">Fuel price (pence per litre)<input id="fu-price" type="number" step="0.1" min="0" inputmode="decimal" placeholder="e.g. 145.9"></label>
     </div>
     <div id="fuelOut" aria-live="polite"></div>
     <div class="fsteps">
@@ -378,6 +378,16 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         </label>
       </div>
       <div id="fuelSteps" aria-live="polite"></div>
+    </div>
+    <div class="fsteps">
+      <h3>Cost at different fuel prices</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <label for="fu-pstep" style="flex:0 1 200px">Step between rows (pence)<input id="fu-pstep" type="number" step="0.5" min="0.5" inputmode="decimal"></label>
+        <label for="fu-prows" style="flex:0 1 200px">Rows above and below yours
+          <select id="fu-prows"><option value="3">3</option><option value="5">5</option><option value="7">7</option><option value="10">10</option><option value="15">15</option></select>
+        </label>
+      </div>
+      <div id="fuelPrices" aria-live="polite"></div>
     </div>
   </section>
   </div>
@@ -652,29 +662,51 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var tok = ++settingsTok;
     state.settingsDirty = true;
     clearTimeout(settingsTimer);
-    settingsTimer = setTimeout(function () {
+    var run = function () {
+      settingsTimer = null; pendingSettings = null;
       function done() { if (tok === settingsTok) state.settingsDirty = false; }
       persist(store.saveSettings(state.settings).then(done, function (e) { done(); throw e; }));
-    }, 600);
+    };
+    pendingSettings = run;
+    settingsTimer = setTimeout(run, 600);
   }
+  var pendingSettings = null;
+  // Save anything still waiting when the app is closed, put in the background or the tab is switched.
+  function flushSaves() {
+    if (pendingSettings) { clearTimeout(settingsTimer); pendingSettings(); }
+    Object.keys(saveTimers).forEach(function (d) {
+      if (state.dirty[d] && state.entries[d]) { clearTimeout(saveTimers[d]); store.saveEntry(state.entries[d]); }
+    });
+  }
+  window.addEventListener("pagehide", flushSaves);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushSaves(); });
   function plannerInput() {
     var o = {};
     Object.keys(PIDS).forEach(function (k) { var v = num($(PIDS[k]).value); o[k] = v >= 0 ? v : 0; });
     state.settings.planner = o; renderPlanner();
     queueSettingsSave();
   }
-  var FIDS = { mpg: "fu-mpg", dist: "fu-dist", shifts: "fu-shifts", price: "fu-price", step: "fu-step", rows: "fu-rows" };
+  var FIDS = { mpg: "fu-mpg", dist: "fu-dist", shifts: "fu-shifts", price: "fu-price", step: "fu-step", rows: "fu-rows", pstep: "fu-pstep", prows: "fu-prows" };
   var LITRES_PER_GALLON = 4.54609;
-  function fuel() { var f = Object.assign({ mpg: 35, dist: 100, shifts: 5, price: 1.45, step: 2, rows: 5 }, state.settings.fuel || {}); f.shifts = Math.round(f.shifts); f.price = Math.round(f.price * 100) / 100; if (!(f.step > 0)) f.step = 2; if ([3, 5, 7, 10, 15].indexOf(f.rows) < 0) f.rows = 5; return f; }
+  var ROW_CHOICES = [3, 5, 7, 10, 15];
+  function fuel() {
+    var f = Object.assign({ mpg: 35, dist: 100, shifts: 5, price: 1.45, step: 2, rows: 5, pstep: 5, prows: 5 }, state.settings.fuel || {});
+    f.shifts = Math.round(f.shifts); f.price = Math.round(f.price * 1000) / 1000;
+    if (!(f.step > 0)) f.step = 2; if (ROW_CHOICES.indexOf(f.rows) < 0) f.rows = 5;
+    if (!(f.pstep > 0)) f.pstep = 5; if (ROW_CHOICES.indexOf(f.prows) < 0) f.prows = 5;
+    return f;
+  }
   function fillFuel() {
     var a = document.activeElement; if (a && a.id && a.id.indexOf("fu-") === 0) return;
     var f = fuel(); Object.keys(FIDS).forEach(function (k) { $(FIDS[k]).value = f[k]; });
+    $("fu-price").value = Math.round(f.price * 1000) / 10;
   }
   function renderFuel() {
     var f = fuel(), gbp = state.settings.currency === "GBP";
-    if (!(f.mpg > 0)) { $("fuelOut").innerHTML = '<div class="empty" style="margin-top:12px">Enter your miles per gallon to see the cost.</div>'; $("fuelSteps").innerHTML = ""; return; }
+    if (!(f.mpg > 0)) { $("fuelOut").innerHTML = '<div class="empty" style="margin-top:12px">Enter your miles per gallon to see the cost.</div>'; $("fuelSteps").innerHTML = ""; $("fuelPrices").innerHTML = ""; return; }
     var litres = f.dist / f.mpg * LITRES_PER_GALLON, cost = litres * f.price;
     renderFuelSteps(f);
+    renderFuelPrices(f);
     // Week = shifts per week. Month = week x 52 / 12. Year = week x 52.
     function cols(x) { return [x, x * f.shifts, x * f.shifts * 52 / 12, x * f.shifts * 52]; }
     function row(label, x, fmtFn, cls) {
@@ -696,12 +728,22 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     }
     $("fuelSteps").innerHTML = '<div class="scroll"><table><thead><tr><th>Miles per gallon</th><th>Per shift</th><th>Week</th><th>Month</th><th>Year</th><th>Month vs yours</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
-  var fuelTimer;
+  function renderFuelPrices(f) {
+    var yours = Math.round(f.price * 1000) / 10, litres = f.dist / f.mpg * LITRES_PER_GALLON;
+    var base = litres * f.price * f.shifts * 52 / 12, rows = "";
+    for (var i = -f.prows; i <= f.prows; i++) {
+      var pp = Math.round((yours + i * f.pstep) * 10) / 10; if (pp <= 0) continue;
+      var shift = litres * pp / 100, wk = shift * f.shifts, mo = wk * 52 / 12, d = mo - base;
+      rows += '<tr' + (i === 0 ? ' class="cur"' : '') + '><td>' + hrs(pp) + 'p' + (i === 0 ? ' (yours)' : '') + '</td><td class="num">' + money(shift) + '</td><td class="num">' + money(wk) + '</td><td class="num">' + money(mo) + '</td><td class="num">' + money(wk * 52) + '</td><td class="num ' + (d < -0.005 ? "pos" : d > 0.005 ? "neg" : "") + '">' + (i === 0 ? "\u2014" : (d > 0 ? "+" : "\u2212") + money(Math.abs(d))) + '</td></tr>';
+    }
+    $("fuelPrices").innerHTML = '<div class="scroll"><table><thead><tr><th>Price per litre</th><th>Per shift</th><th>Week</th><th>Month</th><th>Year</th><th>Month vs yours</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="fine">At your ' + hrs(Math.round(f.mpg * 10) / 10) + ' mpg and ' + hrs(f.dist) + ' miles a shift. Every 1p a litre adds ' + money(litres * 0.01 * f.shifts * 52 / 12) + ' a month.</div>';
+  }
   function fuelInput() {
     var o = {};
     Object.keys(FIDS).forEach(function (k) { var x = num($(FIDS[k]).value); o[k] = x >= 0 ? x : 0; });
     o.shifts = Math.round(o.shifts);
-    o.price = Math.round(o.price * 100) / 100;
+    o.price = Math.round(o.price * 10) / 1000; // pence in the box, pounds when stored
     state.settings.fuel = o; renderFuel();
     queueSettingsSave();
   }
@@ -957,7 +999,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       fillPlanner(); renderPlanner(); persist(store.saveSettings(state.settings));
     });
     Object.keys(FIDS).forEach(function (k) { $(FIDS[k]).addEventListener("input", fuelInput); });
-    $("fu-price").addEventListener("change", function () { var x = num($("fu-price").value); $("fu-price").value = x >= 0 ? (Math.round(x * 100) / 100).toFixed(2) : "0.00"; });
+    $("fu-price").addEventListener("change", function () { var x = num($("fu-price").value); $("fu-price").value = x >= 0 ? Math.round(x * 10) / 10 : 0; });
+    $("fu-pstep").addEventListener("change", function () { $("fu-pstep").value = fuel().pstep; });
     $("fu-step").addEventListener("change", function () { $("fu-step").value = fuel().step; });
     $("fu-shifts").addEventListener("change", function () { var x = num($("fu-shifts").value); $("fu-shifts").value = x >= 0 ? Math.round(x) : 0; });
     $("taxmode").addEventListener("click", function (ev) {
