@@ -188,7 +188,12 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .sgrid .pen { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .sgrid .fine { font-size: 12px; color: var(--muted); }
 .salary h3 { margin: 18px 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-.salary .ot table { min-width: 720px; }
+.salary .ot table { min-width: 760px; font-size: 13px; }
+.salary .ot th, .salary .ot td { padding: 7px 6px; }
+.salary .ot thead th { white-space: normal; vertical-align: bottom; line-height: 1.25; }
+.salary .ot td:first-child, .salary .ot th:first-child { padding-left: 0; }
+.salary th.grp { text-align: center; }
+.salary .ot .sep { border-left: 1px solid var(--line); }
 .salary tr.cur td { background: var(--accent-soft); font-weight: 600; }
 .tabs .ts { display: none; }
 .quick .sep { border-left: 1px solid var(--line); }
@@ -216,7 +221,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   .preview { margin-left: 0; width: 100%; }
 }
 @media (max-width: 640px) {
-  #log table { min-width: 0; }
+  #log table { min-width: 0 !important; }
   #log thead { display: none; }
   #log tr { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
   #log tr.editing { background: var(--accent-soft); }
@@ -240,7 +245,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   <header>
     <div class="brand">
       <!-- Version: four decimals, start 0.1000, add 0.0001 to the last decimal on every update. -->
-      <h1>Real Rate <span class="ver num" title="Version">0.1012</span></h1>
+      <h1>Real Rate <span class="ver num" title="Version">0.1013</span></h1>
       <div class="by">Made by <a href="https://twitter.com/ToejahMM" target="_blank" rel="noopener noreferrer">@ToejahMM</a></div>
     </div>
     <span class="status" id="status" role="status">Loading…</span>
@@ -626,12 +631,14 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       '<div class="hero"><div>' +
         '<h2>Real hourly rate' + (after ? ' after tax' : '') + '</h2>' +
         '<div class="big num">' + (real == null ? "—" : money(real)) + '<small> /h</small></div>' +
-        (real == null ? '<div class="cap">No hours worked in this period.</div>' : '<span class="delta ' + deltaCls + '">' + deltaTxt + '</span>') +
+        (real == null ? '<div class="cap">No hours worked in this period.</div>' : '<span class="delta ' + deltaCls + '">' + deltaTxt + '</span>' +
+          (after ? '<div class="cap">Before tax: <b class="num">' + money(t.real) + '/h</b> real, paid rate ' + money(t.nominal) + '/h</div>' : '')) +
       '</div>' +
       '<div class="stats">' +
-        stat(after ? "Take-home pay" : "Total pay", money(t.pay * k)) + stat("Days logged", t.n) +
+        (after ? stat("Pay before tax", money(t.pay)) + stat("Take-home pay", money(t.pay * k)) : stat("Total pay", money(t.pay)) + stat("Days logged", t.n)) +
         stat("Hours worked", hrs(t.worked)) + stat("Hours paid", hrs(t.paid)) +
-        '<div class="stat" style="grid-column:1/-1;padding-left:0;border-left:0"><div class="k">' + gapLabel + '</div><div class="v num ' + (t.gap > 0 ? "pos" : t.gap < 0 ? "neg" : "") + '">' + hrs(Math.abs(t.gap)) + ' h</div></div>' +
+        (after ? stat("Days logged", t.n) : '') +
+        '<div class="stat"' + (after ? '' : ' style="grid-column:1/-1;padding-left:0;border-left:0"') + '><div class="k">' + gapLabel + '</div><div class="v num ' + (t.gap > 0 ? "pos" : t.gap < 0 ? "neg" : "") + '">' + hrs(Math.abs(t.gap)) + ' h</div></div>' +
       '</div></div>' + (explain ? '<div class="explain">' + explain + '</div>' : "") +
       (after ? '<div class="explain">Showing pay after estimated income tax and National Insurance: about <b>' + (Math.round((1 - k) * 1000) / 10) + '%</b> taken off, based on ' + hrs(state.settings.weekHours) + ' h paid a week at ' + money(t.baseNominal) + '/h. The full breakdown is below.</div>' : "") + taxBlock(t);
   }
@@ -907,10 +914,16 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var rows = "";
     for (var n = 0; n <= c.rows; n++) {
       var x = calc(n), extra = x.net - b.net, shifts = n * perYear;
+      var gExtra = x.g - b.g;
       rows += '<tr' + (n === 0 ? ' class="cur"' : '') + '><td>' + (n === 0 ? "None (basic)" : n + " a " + per) + '</td>' +
-        '<td class="num">' + money(x.g / 12) + '</td>' + (gbp ? '<td class="num">' + money(-(x.tax + x.ni + x.pen) / 12) + '</td>' : '') + '<td class="num"><b>' + money(x.net / 12) + '</b></td>' +
-        '<td class="num">' + money(x.net) + '</td><td class="num pos">' + (n === 0 ? "\u2014" : "+" + money(extra / 12)) + '</td>' +
-        '<td class="num">' + (n === 0 || !gbp ? (n === 0 ? "\u2014" : money(shiftPay)) : money(extra / shifts)) + '</td></tr>';
+        // before tax
+        '<td class="num sep">' + money(x.g / 12) + '</td><td class="num">' + money(x.g) + '</td><td class="num">' + (n === 0 ? "\u2014" : "+" + money(gExtra / 12)) + '</td>' +
+        (gbp ?
+          // deductions, then after tax
+          '<td class="num sep">' + money(-(x.tax + x.ni + x.pen) / 12) + '</td>' +
+          '<td class="num sep"><b>' + money(x.net / 12) + '</b></td><td class="num">' + money(x.net) + '</td><td class="num pos">' + (n === 0 ? "\u2014" : "+" + money(extra / 12)) + '</td>' +
+          '<td class="num">' + (n === 0 ? "\u2014" : money(extra / shifts)) + '</td>'
+          : '') + '</tr>';
     }
     var one = calc(1), keepOne = gbp ? (one.net - b.net) / perYear : shiftPay;
     var penLine = "";
@@ -926,7 +939,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       '<h3>With overtime</h3>' +
       '<div class="explain" style="margin:0 0 10px">Overtime pays <b>' + money(c.rate * c.otmult) + '/h</b> (' + money(c.rate) + ' \u00d7 ' + hrs(c.otmult) + '), so one ' + hrs(c.othours) + ' h shift is <b>' + money(shiftPay) + '</b> before tax' +
         (gbp ? ' and you keep about <b>' + money(keepOne) + '</b> of it.' : '.') + '</div>' +
-      '<div class="scroll ot"><table><thead><tr><th>Overtime shifts</th><th>Gross / month</th>' + (gbp ? '<th>' + (pensionOn() ? 'Tax, NI &amp; pension' : 'Tax &amp; NI') + ' / month</th>' : '') + '<th>Take-home / month</th><th>Take-home / year</th><th>Extra / month</th><th>' + (gbp ? 'Kept per shift' : 'Per shift') + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="scroll ot"><table><thead>' +
+        '<tr><th></th><th class="grp sep" colspan="3">Before tax</th>' + (gbp ? '<th class="grp sep">Deductions</th><th class="grp sep" colspan="4">After tax</th>' : '') + '</tr>' +
+        '<tr><th>Overtime shifts</th><th class="sep">Month</th><th>Year</th><th>Extra / month</th>' +
+        (gbp ? '<th class="sep">' + (pensionOn() ? 'Tax, NI &amp; pension' : 'Tax &amp; NI') + ' / month</th><th class="sep">Month</th><th>Year</th><th>Extra / month</th><th>Kept per shift</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<div class="fine">Week = year \u00f7 ' + c.weeks + ' paid weeks. Month = year \u00f7 12. Overtime shifts ' + (per === "week" ? "per week happen in each of your " + c.weeks + " paid weeks" : "per month happen every month") + '. ' +
         (gbp ? '"Kept per shift" is the extra take-home divided by the overtime shifts in that row, so it is the average each shift adds after income tax, ' + (selfEmp ? "Class 4 " : "") + 'National Insurance' + (pensionOn() ? ' and pension' : '') + '. It drops when overtime pushes you into a higher band. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no ' + (pensionOn() ? '' : 'pension or ') + 'student loan. Pay type is set under Defaults on the Log days tab.' + penNote() : 'Tax is only estimated for GBP.') + '</div>';
   }
@@ -999,13 +1015,16 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     $("whatifBtn").textContent = $("whatif").hidden ? "What if I was paid a different rate?" : "Close what-if";
     if (!list.length) { el.innerHTML = '<div class="empty">Nothing logged for ' + (state.mode === "custom" ? "these dates" : "this period") + ".</div>"; return; }
     var rows = list.slice().reverse().map(function (e) {
-      var m = e.mult || 1, pay = e.paid * e.rate * m * k, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
+      var m = e.mult || 1, gross = e.paid * e.rate * m, pay = gross * k, real = e.worked > 0 ? pay / e.worked : null, d = parse(e.date);
       return '<tr class="' + (state.editing === e.date ? "editing" : "") + '"><td class="dt">' + DOW[d.getDay()] + " " + nice(e.date, true) + "</td>" +
         '<td data-label="Worked">' + stepper(e, "worked") + '</td><td data-label="Paid">' + stepper(e, "paid") + '</td><td class="num" data-label="Rate">' + money(e.rate) + (m !== 1 ? ' <small style="color:var(--muted)">&times;' + m + ' = ' + money(e.rate * m) + '/h</small>' : '') + '</td>' +
-        '<td class="num" data-label="' + (after ? "Take-home" : "Pay") + '">' + money(pay) + '</td><td class="num" data-label="' + (after ? "Real rate after tax" : "Real rate") + '"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
+        (after ? '<td class="num" data-label="Pay">' + money(gross) + '</td>' : '') +
+        '<td class="num" data-label="' + (after ? "Take-home" : "Pay") + '">' + money(pay) + '</td>' +
+        (after ? '<td class="num" data-label="Real rate">' + (e.worked > 0 ? money(gross / e.worked) : "—") + '</td>' : '') +
+        '<td class="num" data-label="' + (after ? "Real rate after tax" : "Real rate") + '"><b>' + (real == null ? "—" : money(real)) + '</b></td>' +
         '<td class="act"><button class="quiet" data-copy="' + e.date + '|-1" title="Copy this day to the day before" aria-label="Copy to the day before">&larr; Copy</button><button class="quiet" data-copy="' + e.date + '|1" title="Copy this day to the day after" aria-label="Copy to the day after">Copy &rarr;</button><button class="quiet" data-edit="' + e.date + '">Edit</button><button class="quiet danger" data-del="' + e.date + '">' + (state.confirmDel === e.date ? "Sure?" : "Delete") + '</button></td></tr>';
     }).join("");
-    el.innerHTML = '<div class="scroll"><table><thead><tr><th>Date</th><th>Worked</th><th>Paid</th><th>Rate</th><th>' + (after ? "Take-home" : "Pay") + '</th><th>' + (after ? "Real rate after tax" : "Real rate") + '</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    el.innerHTML = '<div class="scroll"><table' + (after ? ' style="min-width:900px"' : '') + '><thead><tr><th>Date</th><th>Worked</th><th>Paid</th><th>Rate</th>' + (after ? '<th>Pay</th><th>Take-home</th><th>Real rate</th><th>Real rate after tax</th>' : '<th>Pay</th><th>Real rate</th>') + '<th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   function renderStatus() {
