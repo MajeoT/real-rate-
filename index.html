@@ -181,6 +181,14 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .qhead { display: flex; gap: 12px 28px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
 .qhead .big small { font-size: 0.32em; }
 .quick table { min-width: 560px; }
+.sgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 12px 0 16px; }
+.sgrid fieldset { border: 1px solid var(--line); border-radius: 5px; padding: 12px; margin: 0; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-content: start; }
+.sgrid legend { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 0 6px; }
+.sgrid .wide { grid-column: 1 / -1; }
+.salary h3 { margin: 18px 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.salary .ot table { min-width: 720px; }
+.salary tr.cur td { background: var(--accent-soft); font-weight: 600; }
+.tabs .ts { display: none; }
 .quick .sep { border-left: 1px solid var(--line); }
 .quick .realc { color: var(--accent); font-weight: 500; }
 .quick tr.total td { font-weight: 600; border-bottom: 0; }
@@ -195,6 +203,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   .qgrid { grid-template-columns: 1fr 1fr; }
   .tabs { gap: 2px; padding: 4px; }
   .tabs button { font-size: 13px; padding: 9px 2px; }
+  .tabs .tl { display: none; }
+  .tabs .ts { display: inline; }
+  .sgrid { grid-template-columns: 1fr; }
   .pgrid { grid-template-columns: 1fr; }
   .hero { grid-template-columns: 1fr; }
   .form { grid-template-columns: 1fr 1fr; }
@@ -226,17 +237,18 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   <header>
     <div class="brand">
       <!-- Version: four decimals, start 0.1000, add 0.0001 to the last decimal on every update. -->
-      <h1>Real Rate <span class="ver num" title="Version">0.1010</span></h1>
+      <h1>Real Rate <span class="ver num" title="Version">0.1011</span></h1>
       <div class="by">Made by <a href="https://twitter.com/ToejahMM" target="_blank" rel="noopener noreferrer">@ToejahMM</a></div>
     </div>
     <span class="status" id="status" role="status">Loading…</span>
   </header>
 
   <nav class="tabs" role="tablist" aria-label="Sections">
-    <button type="button" role="tab" id="tb-log" data-tabbtn="log" aria-controls="tab-log">Log days</button>
-    <button type="button" role="tab" id="tb-week" data-tabbtn="week" aria-controls="tab-week">Quick week</button>
-    <button type="button" role="tab" id="tb-planner" data-tabbtn="planner" aria-controls="tab-planner">Planner</button>
-    <button type="button" role="tab" id="tb-fuel" data-tabbtn="fuel" aria-controls="tab-fuel">Fuel</button>
+    <button type="button" role="tab" id="tb-log" data-tabbtn="log" aria-controls="tab-log"><span class="tl">Log days</span><span class="ts">Log</span></button>
+    <button type="button" role="tab" id="tb-week" data-tabbtn="week" aria-controls="tab-week"><span class="tl">Quick week</span><span class="ts">Week</span></button>
+    <button type="button" role="tab" id="tb-salary" data-tabbtn="salary" aria-controls="tab-salary"><span class="tl">Salary</span><span class="ts">Salary</span></button>
+    <button type="button" role="tab" id="tb-planner" data-tabbtn="planner" aria-controls="tab-planner"><span class="tl">Planner</span><span class="ts">Planner</span></button>
+    <button type="button" role="tab" id="tb-fuel" data-tabbtn="fuel" aria-controls="tab-fuel"><span class="tl">Fuel</span><span class="ts">Fuel</span></button>
   </nav>
 
   <div class="tabpanel" id="tab-log" role="tabpanel" aria-labelledby="tb-log">
@@ -331,6 +343,33 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       <label for="q-mult">Pay multiplier<input id="q-mult" type="number" step="0.05" min="0.1" max="10" inputmode="decimal"></label>
     </div>
     <div id="quickOut" aria-live="polite"></div>
+  </section>
+  </div>
+
+  <div class="tabpanel" id="tab-salary" role="tabpanel" aria-labelledby="tb-salary" hidden>
+  <section class="panel quick salary" id="salary" aria-label="Salary calculator">
+    <h2>Salary calculator</h2>
+    <p class="explain" style="margin:0">Your pay from the hours you are paid for, then what overtime adds. Tax is worked out on the whole year including overtime, so each overtime shift is taxed at your top rate.</p>
+    <div class="sgrid">
+      <fieldset>
+        <legend>Basic pay</legend>
+        <label for="s-hours">Hours paid per week<input id="s-hours" type="number" step="0.25" min="0" max="168" inputmode="decimal"></label>
+        <label for="s-rate">Hourly rate<input id="s-rate" type="number" step="0.01" min="0" inputmode="decimal"></label>
+        <label for="s-weeks" class="wide">Paid weeks per year<input id="s-weeks" type="number" step="1" min="1" max="52" inputmode="numeric"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Overtime</legend>
+        <label for="s-othours">Hours per overtime shift<input id="s-othours" type="number" step="0.25" min="0" max="24" inputmode="decimal"></label>
+        <label for="s-otmult">Pay multiplier<input id="s-otmult" type="number" step="0.05" min="0.1" max="10" inputmode="decimal"></label>
+        <label for="s-basis">Overtime shifts counted
+          <select id="s-basis"><option value="month">Per month</option><option value="week">Per week</option></select>
+        </label>
+        <label for="s-rows">Show up to
+          <select id="s-rows"><option value="3">3 shifts</option><option value="5">5 shifts</option><option value="7">7 shifts</option><option value="10">10 shifts</option><option value="15">15 shifts</option></select>
+        </label>
+      </fieldset>
+    </div>
+    <div id="salaryOut" aria-live="polite"></div>
   </section>
   </div>
 
@@ -517,7 +556,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var first = !state.loaded;
     state.loaded = true;
     if (!state.editing && (first || !state.formDirty)) fillFormDefaults();
-    fillPlanner(); fillFuel(); fillQuick();
+    fillPlanner(); fillFuel(); fillQuick(); fillSalary();
     render();
   }
   function persist(p) {
@@ -797,7 +836,52 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     state.settings.quick = o; renderQuick();
     queueSettingsSave();
   }
-  var TABS = ["log", "week", "planner", "fuel"];
+  var SIDS = { hours: "s-hours", rate: "s-rate", weeks: "s-weeks", othours: "s-othours", otmult: "s-otmult", rows: "s-rows" };
+  function salary() {
+    var s = state.settings;
+    var c = Object.assign({ hours: s.weekHours, rate: s.rate, weeks: 52, othours: 12, otmult: s.overtime, basis: "month", rows: 5 }, s.salary || {});
+    if (!(c.weeks >= 1)) c.weeks = 52; c.weeks = Math.min(52, Math.round(c.weeks));
+    if (!(c.otmult > 0)) c.otmult = 1; if ([3, 5, 7, 10, 15].indexOf(c.rows) < 0) c.rows = 5; if (c.basis !== "week") c.basis = "month";
+    return c;
+  }
+  function fillSalary() {
+    var a = document.activeElement; if (a && a.id && a.id.indexOf("s-") === 0) return;
+    var c = salary(); Object.keys(SIDS).forEach(function (k) { $(SIDS[k]).value = c[k]; }); $("s-basis").value = c.basis;
+  }
+  function renderSalary() {
+    var c = salary(), s = state.settings, gbp = s.currency === "GBP", selfEmp = s.payType === "self";
+    var basicWeek = c.hours * c.rate, basicYear = basicWeek * c.weeks;
+    var shiftPay = c.othours * c.rate * c.otmult, perYear = c.basis === "week" ? c.weeks : 12;
+    // Whole-year tax, so every extra shift is taxed at the rate that actually applies to it.
+    function calc(n) { var g = basicYear + n * shiftPay * perYear, r = gbp ? ukTax(g, selfEmp) : { tax: 0, ni: 0 }; return { g: g, tax: r.tax, ni: r.ni, net: g - r.tax - r.ni }; }
+    if (!(basicYear > 0)) { $("salaryOut").innerHTML = '<div class="empty">Enter your hours and hourly rate to see your salary.</div>'; return; }
+    var b = calc(0), per = c.basis === "week" ? "week" : "month";
+    function brow(label, v, cls) { return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="num">' + money(v / c.weeks) + '</td><td class="num">' + money(v / 12) + '</td><td class="num">' + money(v) + '</td></tr>'; }
+    var basic = '<div class="scroll"><table style="min-width:420px"><thead><tr><th>Basic pay</th><th>Week</th><th>Month</th><th>Year</th></tr></thead><tbody>' +
+      brow("Before tax", b.g) + (gbp ? brow("Income tax", -b.tax) + brow(selfEmp ? "Class 4 National Insurance" : "National Insurance", -b.ni) + brow(selfEmp ? "Left after tax and NI" : "Take-home", b.net, "total") : "") + '</tbody></table></div>';
+    var rows = "";
+    for (var n = 0; n <= c.rows; n++) {
+      var x = calc(n), extra = x.net - b.net, shifts = n * perYear;
+      rows += '<tr' + (n === 0 ? ' class="cur"' : '') + '><td>' + (n === 0 ? "None (basic)" : n + " a " + per) + '</td>' +
+        '<td class="num">' + money(x.g / 12) + '</td>' + (gbp ? '<td class="num">' + money(-(x.tax + x.ni) / 12) + '</td>' : '') + '<td class="num"><b>' + money(x.net / 12) + '</b></td>' +
+        '<td class="num">' + money(x.net) + '</td><td class="num pos">' + (n === 0 ? "\u2014" : "+" + money(extra / 12)) + '</td>' +
+        '<td class="num">' + (n === 0 || !gbp ? (n === 0 ? "\u2014" : money(shiftPay)) : money(extra / shifts)) + '</td></tr>';
+    }
+    var one = calc(1), keepOne = gbp ? (one.net - b.net) / perYear : shiftPay;
+    $("salaryOut").innerHTML = basic +
+      '<h3>With overtime</h3>' +
+      '<div class="explain" style="margin:0 0 10px">Overtime pays <b>' + money(c.rate * c.otmult) + '/h</b> (' + money(c.rate) + ' \u00d7 ' + hrs(c.otmult) + '), so one ' + hrs(c.othours) + ' h shift is <b>' + money(shiftPay) + '</b> before tax' +
+        (gbp ? ' and you keep about <b>' + money(keepOne) + '</b> of it.' : '.') + '</div>' +
+      '<div class="scroll ot"><table><thead><tr><th>Overtime shifts</th><th>Gross / month</th>' + (gbp ? '<th>Tax &amp; NI / month</th>' : '') + '<th>Take-home / month</th><th>Take-home / year</th><th>Extra / month</th><th>' + (gbp ? 'Kept per shift' : 'Per shift') + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="fine">Week = year \u00f7 ' + c.weeks + ' paid weeks. Month = year \u00f7 12. Overtime shifts ' + (per === "week" ? "per week happen in each of your " + c.weeks + " paid weeks" : "per month happen every month") + '. ' +
+        (gbp ? '"Kept per shift" is the extra take-home divided by the overtime shifts in that row, so it is the average each shift adds after income tax and ' + (selfEmp ? "Class 4 " : "") + 'National Insurance. It drops when overtime pushes you into a higher band. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no pension or student loan. Pay type is set under Defaults on the Log days tab.' : 'Tax is only estimated for GBP.') + '</div>';
+  }
+  function salaryInput() {
+    var o = { basis: $("s-basis").value === "week" ? "week" : "month" };
+    Object.keys(SIDS).forEach(function (k) { var x = num($(SIDS[k]).value); o[k] = x >= 0 ? x : 0; });
+    state.settings.salary = o; renderSalary(); queueSettingsSave();
+  }
+  var TABS = ["log", "week", "salary", "planner", "fuel"];
   function showTab(name, scroll) {
     if (TABS.indexOf(name) < 0) name = "log";
     TABS.forEach(function (t) {
@@ -866,7 +950,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     else if (!state.loaded) s.textContent = "Loading…";
     else s.textContent = state.storage === "local" ? "Saved in this browser only" : "Saved to your account";
   }
-  function render() { renderPicker(); renderSummary(); renderChart(); renderLog(); renderStatus(); renderPreview(); renderPlanner(); renderFuel(); renderQuick(); }
+  function render() { renderPicker(); renderSummary(); renderChart(); renderLog(); renderStatus(); renderPreview(); renderPlanner(); renderFuel(); renderQuick(); renderSalary(); }
 
   /* ---------- form ---------- */
   function fillFormDefaults() {
@@ -1026,6 +1110,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var startTab = location.hash.slice(1);
     if (TABS.indexOf(startTab) < 0) { try { startTab = localStorage.getItem("realrate:tab") || "log"; } catch (e) { startTab = "log"; } }
     showTab(startTab, false);
+    Object.keys(SIDS).forEach(function (k) { $(SIDS[k]).addEventListener("input", salaryInput); });
+    $("s-basis").addEventListener("change", salaryInput);
+    $("s-weeks").addEventListener("change", function () { $("s-weeks").value = salary().weeks; });
     $("cancel").onclick = stopEdit;
     $("whatifBtn").onclick = function () {
       var opening = $("whatif").hidden;
@@ -1056,7 +1143,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       var r = num($("d-rate").value), p = num($("d-paid").value);
       var dy = num($("d-hpw").value), wk = num($("d-weeks").value), ot = num($("d-ot").value), oldOt = state.settings.overtime, curM = getMult();
       state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value,
-        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime, planner: state.settings.planner || null, fuel: state.settings.fuel || null, afterTax: !!state.settings.afterTax, quick: state.settings.quick || null };
+        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime, planner: state.settings.planner || null, fuel: state.settings.fuel || null, afterTax: !!state.settings.afterTax, quick: state.settings.quick || null, salary: state.settings.salary || null };
       if (!state.editing) fillMult(curM === oldOt && oldOt !== 1 ? state.settings.overtime : curM);
       render(); persist(store.saveSettings(state.settings));
     }
@@ -1092,10 +1179,12 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         if (fu) cs.fuel = fu;
         var qk = nums(src.quick, Object.keys(QIDS));
         if (qk) { qk.mode = src.quick.mode === "total" ? "total" : "shift"; cs.quick = qk; }
+        var sk = nums(src.salary, Object.keys(SIDS));
+        if (sk) { sk.basis = src.salary.basis === "week" ? "week" : "month"; cs.salary = sk; }
         state.settings = Object.assign({}, DEFAULTS, cs);
         try { await store.saveSettings(state.settings); } catch (x) {}
         if (!state.editing) fillFormDefaults();
-        fillPlanner(); fillFuel(); fillQuick();
+        fillPlanner(); fillFuel(); fillQuick(); fillSalary();
         gotSettings = true;
       }
       render(); flash("Restored " + n + " day" + (n === 1 ? "" : "s") + (gotSettings ? " and your settings" : "") + ".");
