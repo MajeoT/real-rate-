@@ -185,6 +185,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .sgrid fieldset { border: 1px solid var(--line); border-radius: 5px; padding: 12px; margin: 0; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-content: start; }
 .sgrid legend { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 0 6px; }
 .sgrid .wide { grid-column: 1 / -1; }
+.sgrid .pen { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.sgrid .fine { font-size: 12px; color: var(--muted); }
 .salary h3 { margin: 18px 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .salary .ot table { min-width: 720px; }
 .salary tr.cur td { background: var(--accent-soft); font-weight: 600; }
@@ -206,6 +208,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   .tabs .tl { display: none; }
   .tabs .ts { display: inline; }
   .sgrid { grid-template-columns: 1fr; }
+  .sgrid .pen { grid-template-columns: 1fr 1fr; }
   .pgrid { grid-template-columns: 1fr; }
   .hero { grid-template-columns: 1fr; }
   .form { grid-template-columns: 1fr 1fr; }
@@ -237,7 +240,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   <header>
     <div class="brand">
       <!-- Version: four decimals, start 0.1000, add 0.0001 to the last decimal on every update. -->
-      <h1>Real Rate <span class="ver num" title="Version">0.1011</span></h1>
+      <h1>Real Rate <span class="ver num" title="Version">0.1012</span></h1>
       <div class="by">Made by <a href="https://twitter.com/ToejahMM" target="_blank" rel="noopener noreferrer">@ToejahMM</a></div>
     </div>
     <span class="status" id="status" role="status">Loading…</span>
@@ -367,6 +370,18 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         <label for="s-rows">Show up to
           <select id="s-rows"><option value="3">3 shifts</option><option value="5">5 shifts</option><option value="7">7 shifts</option><option value="10">10 shifts</option><option value="15">15 shifts</option></select>
         </label>
+      </fieldset>
+      <fieldset class="pen">
+        <legend>Pension</legend>
+        <label for="pn-pct">Your contribution (%)<input id="pn-pct" type="number" step="0.5" min="0" max="100" inputmode="decimal"></label>
+        <label for="pn-type">Scheme type
+          <select id="pn-type"><option value="ras">Relief at source (e.g. NEST)</option><option value="netpay">Net pay (before income tax)</option><option value="sacrifice">Salary sacrifice</option></select>
+        </label>
+        <label for="pn-basis">Worked out on
+          <select id="pn-basis"><option value="qualifying">Qualifying earnings</option><option value="all">All pay</option></select>
+        </label>
+        <label for="pn-emp">Employer contribution (%)<input id="pn-emp" type="number" step="0.5" min="0" max="100" inputmode="decimal"></label>
+        <p class="fine wide" style="margin:0">Applies to every take-home figure in the app. Set your contribution to 0 for no pension. Qualifying earnings means pay between £6,240 and £50,270 a year, the usual workplace default. Your payslip or pension provider will tell you the scheme type.</p>
       </fieldset>
     </div>
     <div id="salaryOut" aria-live="polite"></div>
@@ -556,7 +571,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var first = !state.loaded;
     state.loaded = true;
     if (!state.editing && (first || !state.formDirty)) fillFormDefaults();
-    fillPlanner(); fillFuel(); fillQuick(); fillSalary();
+    fillPlanner(); fillFuel(); fillQuick(); fillSalary(); fillPension();
     render();
   }
   function persist(p) {
@@ -628,13 +643,42 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var ni = Math.max(0, Math.min(inc, 50270) - 12570) * (selfEmp ? 0.06 : 0.08) + Math.max(0, inc - 50270) * 0.02;
     return { tax: tax, ni: ni };
   }
+  var PEN_TYPES = { ras: "relief at source", netpay: "net pay", sacrifice: "salary sacrifice" };
+  function pension() {
+    var p = Object.assign({ pct: 0, type: "ras", basis: "qualifying", employer: 0 }, state.settings.pension || {});
+    if (!PEN_TYPES[p.type]) p.type = "ras"; if (p.basis !== "all") p.basis = "qualifying";
+    if (!(p.pct >= 0)) p.pct = 0; if (!(p.employer >= 0)) p.employer = 0;
+    return p;
+  }
+  function pensionOn() { return state.settings.currency === "GBP" && pension().pct > 0; }
+  function penType() { return state.settings.payType === "self" ? "ras" : pension().type; } // self-employed pensions are relief at source
+  function penLabel() { return "Pension (" + PEN_TYPES[penType()] + ")"; }
+  function penNote() {
+    if (!pensionOn()) return "";
+    var p = pension();
+    return " Pension: " + hrs(p.pct) + "% " + PEN_TYPES[penType()] + " on " + (p.basis === "all" ? "all pay" : "qualifying earnings") + ", set on the Salary tab.";
+  }
+  // Yearly income tax, NI and the pension taken from your pay, for a year's gross pay.
+  //  relief at source: you pay 80% of the contribution from take-home, the government adds 20%
+  //  net pay: contribution comes off before income tax (not before NI)
+  //  salary sacrifice: contribution comes off before income tax and NI
+  function payDeductions(gross, noPension) {
+    var selfEmp = state.settings.payType === "self", p = pension(), r;
+    if (noPension || !(p.pct > 0)) { r = ukTax(gross, selfEmp); return { tax: r.tax, ni: r.ni, pen: 0, contrib: 0, employer: 0 }; }
+    var base = p.basis === "all" ? gross : Math.min(Math.max(gross - 6240, 0), 50270 - 6240);
+    var contrib = base * p.pct / 100, employer = selfEmp ? 0 : base * p.employer / 100, t = penType();
+    if (t === "sacrifice") { r = ukTax(Math.max(0, gross - contrib), selfEmp); return { tax: r.tax, ni: r.ni, pen: contrib, contrib: contrib, employer: employer }; }
+    if (t === "netpay") return { tax: ukTax(Math.max(0, gross - contrib), selfEmp).tax, ni: ukTax(gross, selfEmp).ni, pen: contrib, contrib: contrib, employer: employer };
+    r = ukTax(gross, selfEmp);
+    return { tax: r.tax, ni: r.ni, pen: contrib * 0.8, contrib: contrib, employer: employer };
+  }
   function isAfter() { return !!state.settings.afterTax && state.settings.currency === "GBP"; }
   // Share of pay you keep after estimated income tax and NI, for a typical week at this base rate.
   function keepFactor(baseRate) {
     var s = state.settings;
     if (!isAfter() || !(baseRate > 0)) return 1;
-    var annual = s.weekHours * baseRate * s.weeks, r = ukTax(annual, s.payType === "self");
-    return annual > 0 ? (annual - r.tax - r.ni) / annual : 1;
+    var annual = s.weekHours * baseRate * s.weeks, r = payDeductions(annual);
+    return annual > 0 ? (annual - r.tax - r.ni - r.pen) / annual : 1;
   }
   function taxBlock(t) {
     var s = state.settings;
@@ -645,7 +689,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     // only the hourly figures differ, by dividing by hours paid or by hours actually worked.
     var weekly = s.weekHours * t.baseNominal, annual = weekly * s.weeks;
     var paidYear = s.weekHours * s.weeks, workedYear = paidYear * (t.worked / t.paid), workedWeek = s.weekHours * (t.worked / t.paid);
-    var r = ukTax(annual, selfEmp), net = annual - r.tax - r.ni, f = annual > 0 ? t.pay / annual : 0;
+    var r = payDeductions(annual), net = annual - r.tax - r.ni - r.pen, f = annual > 0 ? t.pay / annual : 0;
     function row(label, v, cls) {
       return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td>' +
         '<td class="num">' + money(v / paidYear) + '</td><td class="num realc">' + money(v / workedYear) + '</td>' +
@@ -657,10 +701,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       row("Pay before tax", annual) +
       row("Income tax", -r.tax) +
       row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -r.ni) +
+      (r.pen > 0 ? row(penLabel(), -r.pen) : "") +
       row(selfEmp ? "Left after tax and NI" : "Take-home", net, "total") +
       '</tbody></table></div>' +
       '<div class="explain">In a typical week you are paid for <b>' + hrs(s.weekHours) + ' h</b> and work <b>' + hrs(workedWeek) + ' h</b>. The pay is the same either way. <b>Paid hour</b> divides it by the hours you are paid for. <b>Real hour</b> divides it by the hours you actually work.</div>' +
-      '<div class="fine">Week = ' + hrs(s.weekHours) + ' h paid \u00d7 your average base rate of ' + money(t.baseNominal) + '/h = ' + money(weekly) + '. Overtime multipliers are left out of this projection, so use the Planner tab for overtime. Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + '. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no pension, student loan or other income. Scottish tax rates differ. Change hours and weeks under Defaults for new days.</div></div>';
+      '<div class="fine">Week = ' + hrs(s.weekHours) + ' h paid \u00d7 your average base rate of ' + money(t.baseNominal) + '/h = ' + money(weekly) + '. Overtime multipliers are left out of this projection, so use the Planner tab for overtime. Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + '. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, and no ' + (pensionOn() ? '' : 'pension, ') + 'student loan or other income. Scottish tax rates differ. Change hours and weeks under Defaults for new days.' + penNote() + '</div></div>';
   }
   var PIDS = { paidWeek: "p-paid", workedWeek: "p-worked", rate: "p-rate", otPaid: "p-otpaid", otWorked: "p-otworked", otMult: "p-otmult", otTimes: "p-ottimes" };
   function planner() {
@@ -675,7 +720,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var p = planner(), s = state.settings, WPM = 52 / 12, gbp = s.currency === "GBP", selfEmp = s.payType === "self";
     var stdPay = p.paidWeek * p.rate * WPM, otPay = p.otPaid * p.rate * p.otMult * p.otTimes, gross = stdPay + otPay;
     var paidH = p.paidWeek * WPM + p.otPaid * p.otTimes, workedH = p.workedWeek * WPM + p.otWorked * p.otTimes;
-    var r = gbp ? ukTax(gross * 12, selfEmp) : { tax: 0, ni: 0 }, net = gross - r.tax / 12 - r.ni / 12;
+    var r = gbp ? payDeductions(gross * 12) : { tax: 0, ni: 0, pen: 0 }, net = gross - r.tax / 12 - r.ni / 12 - r.pen / 12;
     function cell(v, h) { return h > 0 ? money(v / h) : "\u2014"; }
     function hc(v) { return v == null ? "\u2014" : money(v); }
     function row(label, m, hourly, cls, ph, rh) {
@@ -686,7 +731,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var rows = row("Usual weeks (" + hrs(p.paidWeek) + " h \u00d7 " + money(p.rate) + " \u00d7 52 \u00f7 12)", stdPay, false, "sub", p.rate, p.workedWeek > 0 ? p.rate * p.paidWeek / p.workedWeek : null) +
       row("Overtime (" + hrs(p.otPaid) + " h \u00d7 " + hrs(p.otMult) + "\u00d7 \u00d7 " + p.otTimes + ")", otPay, false, "sub", p.rate * p.otMult, p.otWorked > 0 ? p.rate * p.otMult * p.otPaid / p.otWorked : null) +
       row("Pay before tax", gross, true, "");
-    if (gbp) rows += row("Income tax", -r.tax / 12, true) + row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -r.ni / 12, true) + row(selfEmp ? "Left after tax and NI" : "Take-home", net, true, "total");
+    if (gbp) rows += row("Income tax", -r.tax / 12, true) + row(selfEmp ? "Class 4 National Insurance" : "National Insurance", -r.ni / 12, true) + (r.pen > 0 ? row(penLabel(), -r.pen / 12, true) : "") + row(selfEmp ? "Left after tax and NI" : "Take-home", net, true, "total");
     var same = Math.abs(paidH - workedH) < 0.005;
     var all = sum(Object.keys(state.entries).map(function (k) { return state.entries[k]; }));
     var canRatio = all.paid > 0 && all.worked > 0 && Math.abs(all.paid - all.worked) > 0.005;
@@ -694,7 +739,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       (canRatio ? '<br><button type="button" data-act="ratio">Fill hours worked from my logged days</button>' : '') + '</div>' : '';
     $("plannerOut").innerHTML = note + '<div class="scroll"><table><thead><tr><th></th><th>Paid hour</th><th>Real hour</th><th class="sep">Month</th><th>Year</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<div class="explain">Overtime pays <b>' + money(p.rate * p.otMult) + '/h</b> (' + money(p.rate) + ' \u00d7 ' + hrs(p.otMult) + '). In a typical month you are paid for <b>' + hrs(paidH) + ' h</b> and work <b>' + hrs(workedH) + ' h</b>. Pay before tax is <b>' + money(gross) + '</b>, which is <b>' + (workedH > 0 ? money(gross / workedH) : "\u2014") + '</b> for each hour worked.</div>' +
-      '<div class="fine">A month is 52 \u00f7 12 weeks. Tax assumes every month is like this one' + (gbp ? ', using 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no pension or student loan' : '. Tax is only estimated for GBP') + '. Saved with your settings and not affected by the days you log.</div>';
+      '<div class="fine">A month is 52 \u00f7 12 weeks. Tax assumes every month is like this one' + (gbp ? ', using 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no ' + (pensionOn() ? '' : 'pension or ') + 'student loan' : '. Tax is only estimated for GBP') + '.' + penNote() + ' Saved with your settings and not affected by the days you log.</div>';
   }
   var settingsTimer, settingsTok = 0;
   function queueSettingsSave() {
@@ -804,8 +849,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var pay = paidW * q.rate * q.mult, real = workedW > 0 ? pay / workedW : null, paidRate = paidW > 0 ? pay / paidW : null;
     if (!(paidW > 0)) { $("quickOut").innerHTML = '<div class="empty">Enter the shifts and hours paid to see your week.</div>'; return; }
     // Tax as if every working week were like this one; month and year use your weeks-per-year setting.
-    var r = gbp ? ukTax(pay * s.weeks, s.payType === "self") : { tax: 0, ni: 0 };
-    var tax = r.tax / s.weeks, ni = r.ni / s.weeks, net = pay - tax - ni, keep = pay > 0 ? net / pay : 1;
+    var r = gbp ? payDeductions(pay * s.weeks) : { tax: 0, ni: 0, pen: 0 };
+    var tax = r.tax / s.weeks, ni = r.ni / s.weeks, pen = r.pen / s.weeks, net = pay - tax - ni - pen, keep = pay > 0 ? net / pay : 1;
     function h(v, hours) { return hours > 0 ? money(v / hours) : "\u2014"; }
     function row(label, v, cls) {
       return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="num">' + h(v, paidW) + '</td><td class="num realc">' + h(v, workedW) + '</td>' +
@@ -821,13 +866,13 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       '</div>' +
       '<div class="scroll"><table><thead><tr><th></th><th>Paid hour</th><th>Real hour</th><th class="sep">Week</th><th>Month</th><th>Year</th></tr></thead><tbody>' +
       row("Pay before tax", pay, gbp ? "" : "total") +
-      (gbp ? row("Income tax", -tax) + row(s.payType === "self" ? "Class 4 National Insurance" : "National Insurance", -ni) + row(s.payType === "self" ? "Left after tax and NI" : "Take-home", net, "total") : "") +
+      (gbp ? row("Income tax", -tax) + row(s.payType === "self" ? "Class 4 National Insurance" : "National Insurance", -ni) + (pen > 0 ? row(penLabel(), -pen) : "") + row(s.payType === "self" ? "Left after tax and NI" : "Take-home", net, "total") : "") +
       '</tbody></table></div>' +
       '<div class="explain">' + (q.shifts > 0 ? q.shifts + ' shift' + (q.shifts === 1 ? '' : 's') + ': ' : '') + '<b>' + hrs(paidW) + ' h</b> paid, <b>' + hrs(workedW) + ' h</b> worked' +
         (Math.abs(gap) > 0.001 ? ' (' + hrs(Math.abs(gap)) + ' h ' + (gap > 0 ? 'paid but not worked' : 'worked but not paid') + ')' : '') + '.' +
         (q.shifts > 0 ? ' Each shift pays <b>' + money(pay / q.shifts) + '</b>' + (gbp ? ', about <b>' + money(net / q.shifts) + '</b> after tax' : '') + '.' : '') +
         (q.mult !== 1 ? ' Rate \u00d7 ' + hrs(q.mult) + ' = ' + money(q.rate * q.mult) + '/h.' : '') + '</div>' +
-      '<div class="fine">Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + ' (your weeks per year, set under Defaults on the Log days tab).' + (gbp ? ' Tax assumes every working week is like this one, using 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no pension or student loan.' : ' Tax is only estimated for GBP.') + ' Not added to your logged days.</div>';
+      '<div class="fine">Month = week \u00d7 ' + s.weeks + ' \u00f7 12. Year = week \u00d7 ' + s.weeks + ' (your weeks per year, set under Defaults on the Log days tab).' + (gbp ? ' Tax assumes every working week is like this one, using 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no ' + (pensionOn() ? '' : 'pension or ') + 'student loan.' : ' Tax is only estimated for GBP.') + penNote() + ' Not added to your logged days.</div>';
   }
   function quickInput() {
     var o = { mode: $("q-mode").value === "total" ? "total" : "shift" };
@@ -853,28 +898,48 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     var basicWeek = c.hours * c.rate, basicYear = basicWeek * c.weeks;
     var shiftPay = c.othours * c.rate * c.otmult, perYear = c.basis === "week" ? c.weeks : 12;
     // Whole-year tax, so every extra shift is taxed at the rate that actually applies to it.
-    function calc(n) { var g = basicYear + n * shiftPay * perYear, r = gbp ? ukTax(g, selfEmp) : { tax: 0, ni: 0 }; return { g: g, tax: r.tax, ni: r.ni, net: g - r.tax - r.ni }; }
+    function calc(n) { var g = basicYear + n * shiftPay * perYear, r = gbp ? payDeductions(g) : { tax: 0, ni: 0, pen: 0 }; return { g: g, tax: r.tax, ni: r.ni, pen: r.pen, contrib: r.contrib || 0, employer: r.employer || 0, net: g - r.tax - r.ni - r.pen }; }
     if (!(basicYear > 0)) { $("salaryOut").innerHTML = '<div class="empty">Enter your hours and hourly rate to see your salary.</div>'; return; }
     var b = calc(0), per = c.basis === "week" ? "week" : "month";
     function brow(label, v, cls) { return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="num">' + money(v / c.weeks) + '</td><td class="num">' + money(v / 12) + '</td><td class="num">' + money(v) + '</td></tr>'; }
     var basic = '<div class="scroll"><table style="min-width:420px"><thead><tr><th>Basic pay</th><th>Week</th><th>Month</th><th>Year</th></tr></thead><tbody>' +
-      brow("Before tax", b.g) + (gbp ? brow("Income tax", -b.tax) + brow(selfEmp ? "Class 4 National Insurance" : "National Insurance", -b.ni) + brow(selfEmp ? "Left after tax and NI" : "Take-home", b.net, "total") : "") + '</tbody></table></div>';
+      brow("Before tax", b.g) + (gbp ? brow("Income tax", -b.tax) + brow(selfEmp ? "Class 4 National Insurance" : "National Insurance", -b.ni) + (b.pen > 0 ? brow(penLabel(), -b.pen) : "") + brow(selfEmp ? "Left after tax and NI" : "Take-home", b.net, "total") : "") + '</tbody></table></div>';
     var rows = "";
     for (var n = 0; n <= c.rows; n++) {
       var x = calc(n), extra = x.net - b.net, shifts = n * perYear;
       rows += '<tr' + (n === 0 ? ' class="cur"' : '') + '><td>' + (n === 0 ? "None (basic)" : n + " a " + per) + '</td>' +
-        '<td class="num">' + money(x.g / 12) + '</td>' + (gbp ? '<td class="num">' + money(-(x.tax + x.ni) / 12) + '</td>' : '') + '<td class="num"><b>' + money(x.net / 12) + '</b></td>' +
+        '<td class="num">' + money(x.g / 12) + '</td>' + (gbp ? '<td class="num">' + money(-(x.tax + x.ni + x.pen) / 12) + '</td>' : '') + '<td class="num"><b>' + money(x.net / 12) + '</b></td>' +
         '<td class="num">' + money(x.net) + '</td><td class="num pos">' + (n === 0 ? "\u2014" : "+" + money(extra / 12)) + '</td>' +
         '<td class="num">' + (n === 0 || !gbp ? (n === 0 ? "\u2014" : money(shiftPay)) : money(extra / shifts)) + '</td></tr>';
     }
     var one = calc(1), keepOne = gbp ? (one.net - b.net) / perYear : shiftPay;
-    $("salaryOut").innerHTML = basic +
+    var penLine = "";
+    if (gbp && pensionOn()) {
+      var noPen = payDeductions(b.g, true), cost = (b.g - noPen.tax - noPen.ni) - b.net, ras = penType() === "ras";
+      penLine = '<div class="explain">Into your pension each month: <b>' + money(b.contrib / 12) + '</b> from you' +
+        (ras ? ' (you pay ' + money(b.pen / 12) + ' and the government adds ' + money((b.contrib - b.pen) / 12) + ')' : '') +
+        (b.employer > 0 ? ' plus <b>' + money(b.employer / 12) + '</b> from your employer' : '') + ' = <b>' + money((b.contrib + b.employer) / 12) + '</b>. ' +
+        'Because of tax relief it only lowers your take-home by <b>' + money(cost / 12) + '</b> a month.' +
+        (ras && b.g > 50270 ? ' Higher-rate taxpayers can claim extra relief through Self Assessment, which is not included here.' : '') + '</div>';
+    }
+    $("salaryOut").innerHTML = basic + penLine +
       '<h3>With overtime</h3>' +
       '<div class="explain" style="margin:0 0 10px">Overtime pays <b>' + money(c.rate * c.otmult) + '/h</b> (' + money(c.rate) + ' \u00d7 ' + hrs(c.otmult) + '), so one ' + hrs(c.othours) + ' h shift is <b>' + money(shiftPay) + '</b> before tax' +
         (gbp ? ' and you keep about <b>' + money(keepOne) + '</b> of it.' : '.') + '</div>' +
-      '<div class="scroll ot"><table><thead><tr><th>Overtime shifts</th><th>Gross / month</th>' + (gbp ? '<th>Tax &amp; NI / month</th>' : '') + '<th>Take-home / month</th><th>Take-home / year</th><th>Extra / month</th><th>' + (gbp ? 'Kept per shift' : 'Per shift') + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="scroll ot"><table><thead><tr><th>Overtime shifts</th><th>Gross / month</th>' + (gbp ? '<th>' + (pensionOn() ? 'Tax, NI &amp; pension' : 'Tax &amp; NI') + ' / month</th>' : '') + '<th>Take-home / month</th><th>Take-home / year</th><th>Extra / month</th><th>' + (gbp ? 'Kept per shift' : 'Per shift') + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<div class="fine">Week = year \u00f7 ' + c.weeks + ' paid weeks. Month = year \u00f7 12. Overtime shifts ' + (per === "week" ? "per week happen in each of your " + c.weeks + " paid weeks" : "per month happen every month") + '. ' +
-        (gbp ? '"Kept per shift" is the extra take-home divided by the overtime shifts in that row, so it is the average each shift adds after income tax and ' + (selfEmp ? "Class 4 " : "") + 'National Insurance. It drops when overtime pushes you into a higher band. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no pension or student loan. Pay type is set under Defaults on the Log days tab.' : 'Tax is only estimated for GBP.') + '</div>';
+        (gbp ? '"Kept per shift" is the extra take-home divided by the overtime shifts in that row, so it is the average each shift adds after income tax, ' + (selfEmp ? "Class 4 " : "") + 'National Insurance' + (pensionOn() ? ' and pension' : '') + '. It drops when overtime pushes you into a higher band. Uses 2026/27 rates for England, Wales and Northern Ireland, tax code 1257L, no ' + (pensionOn() ? '' : 'pension or ') + 'student loan. Pay type is set under Defaults on the Log days tab.' + penNote() : 'Tax is only estimated for GBP.') + '</div>';
+  }
+  function fillPension() {
+    var a = document.activeElement; if (a && a.id && a.id.indexOf("pn-") === 0) return;
+    var p = pension(); $("pn-pct").value = p.pct; $("pn-emp").value = p.employer; $("pn-type").value = p.type; $("pn-basis").value = p.basis;
+    $("pn-type").disabled = state.settings.payType === "self";
+    $("pn-type").title = state.settings.payType === "self" ? "Self-employed pensions are relief at source" : "";
+  }
+  function pensionInput() {
+    var x = num($("pn-pct").value), e = num($("pn-emp").value);
+    state.settings.pension = { pct: x >= 0 ? Math.min(100, x) : 0, employer: e >= 0 ? Math.min(100, e) : 0, type: PEN_TYPES[$("pn-type").value] ? $("pn-type").value : "ras", basis: $("pn-basis").value === "all" ? "all" : "qualifying" };
+    render(); queueSettingsSave();
   }
   function salaryInput() {
     var o = { basis: $("s-basis").value === "week" ? "week" : "month" };
@@ -1112,6 +1177,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     showTab(startTab, false);
     Object.keys(SIDS).forEach(function (k) { $(SIDS[k]).addEventListener("input", salaryInput); });
     $("s-basis").addEventListener("change", salaryInput);
+    ["pn-pct", "pn-emp"].forEach(function (id) { $(id).addEventListener("input", pensionInput); });
+    ["pn-type", "pn-basis"].forEach(function (id) { $(id).addEventListener("change", pensionInput); });
     $("s-weeks").addEventListener("change", function () { $("s-weeks").value = salary().weeks; });
     $("cancel").onclick = stopEdit;
     $("whatifBtn").onclick = function () {
@@ -1143,9 +1210,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       var r = num($("d-rate").value), p = num($("d-paid").value);
       var dy = num($("d-hpw").value), wk = num($("d-weeks").value), ot = num($("d-ot").value), oldOt = state.settings.overtime, curM = getMult();
       state.settings = { rate: r >= 0 ? r : DEFAULTS.rate, paidHours: p >= 0 ? p : DEFAULTS.paidHours, currency: $("d-cur").value,
-        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime, planner: state.settings.planner || null, fuel: state.settings.fuel || null, afterTax: !!state.settings.afterTax, quick: state.settings.quick || null, salary: state.settings.salary || null };
+        weekHours: dy >= 1 && dy <= 168 ? dy : DEFAULTS.weekHours, weeks: wk >= 1 && wk <= 52 ? wk : DEFAULTS.weeks, payType: $("d-type").value, overtime: ot >= 1 && ot <= 5 ? ot : DEFAULTS.overtime, planner: state.settings.planner || null, fuel: state.settings.fuel || null, afterTax: !!state.settings.afterTax, quick: state.settings.quick || null, salary: state.settings.salary || null, pension: state.settings.pension || null };
       if (!state.editing) fillMult(curM === oldOt && oldOt !== 1 ? state.settings.overtime : curM);
-      render(); persist(store.saveSettings(state.settings));
+      fillPension(); render(); persist(store.saveSettings(state.settings));
     }
     ["d-rate", "d-paid", "d-cur", "d-hpw", "d-weeks", "d-type", "d-ot"].forEach(function (id) { $(id).addEventListener("change", saveDefaults); });
     $("b-show").onclick = function () {
@@ -1181,10 +1248,12 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         if (qk) { qk.mode = src.quick.mode === "total" ? "total" : "shift"; cs.quick = qk; }
         var sk = nums(src.salary, Object.keys(SIDS));
         if (sk) { sk.basis = src.salary.basis === "week" ? "week" : "month"; cs.salary = sk; }
+        var pk = nums(src.pension, ["pct", "employer"]);
+        if (pk) { pk.type = PEN_TYPES[src.pension.type] ? src.pension.type : "ras"; pk.basis = src.pension.basis === "all" ? "all" : "qualifying"; cs.pension = pk; }
         state.settings = Object.assign({}, DEFAULTS, cs);
         try { await store.saveSettings(state.settings); } catch (x) {}
         if (!state.editing) fillFormDefaults();
-        fillPlanner(); fillFuel(); fillQuick(); fillSalary();
+        fillPlanner(); fillFuel(); fillQuick(); fillSalary(); fillPension();
         gotSettings = true;
       }
       render(); flash("Restored " + n + " day" + (n === 1 ? "" : "s") + (gotSettings ? " and your settings" : "") + ".");
